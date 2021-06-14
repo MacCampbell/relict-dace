@@ -240,7 +240,8 @@ fig2b<-ggtree(t4, branch.length = "none") %<+% keepers +
   geom_tippoint(aes(size=`Sample Size`, x=x+0.2, fill=`Geographic Region`), pch=21, alpha=0.85) +
   geom_tiplab(size=3, offset = 0.5) + 
   geom_nodelab(fontface="bold", size=3)+xlim(0,12) +
-  scale_fill_manual(values=c("blue","red","green"))
+  scale_fill_manual(values=c("blue","red","green")) +
+  theme(legend.position = "")
 
 fig2b
 ggsave("outputs/201/fig2b.pdf", width=8, height=5)
