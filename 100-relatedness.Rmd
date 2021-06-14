@@ -9,7 +9,17 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
 ```
 
-## Kinship Coefficients
+
+```{r}
+library(tidyverse)
+library(RcppCNPy)
+library(viridis)
+library(ggpubr)
+library(cowplot)
+library(ggrepel)
+```
+
+## Calculating Kinship Coefficients
 
 We need to see if there are related individuals and create a new bamlist for downstream analyses.
 
@@ -28,3 +38,277 @@ python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/d
 -relate outputs/100RD_all.kinship.kinship.npy -o outputs/100/RD_all-kinremoved -threads 10
 ```
 
+
+Masking related individuals with pair-wise kinship estimates >= 0.0625     
+Keeping 362 individuals after filtering (removing 30)     
+
+Locally:    
+```{sh, eval=FALSE}
+scp -P 2022 farm:~/relict-dace/outputs/100/RD_all* outputs/100/
+```
+
+
+## Organizing Meta
+
+```{r}
+data<-read_tsv("meta/location-codes.tsv") %>% rename(Label=label)
+
+bams<-read_tsv("bamlists/RD_all.bamlist", col_names = c("Path"))
+bams$Bam<-gsub("/home/abenj93/projects/RelictDace/data/de_novo/RD_alignment/RAD_align/","",bams$Path)
+bams$Bam<-gsub("_R1.sort.proper.rmdup.bam","",bams$Bam)
+bams$Label<-bams$Bam
+
+#bams$Location<-gsub("_\\d+","",bams$Label)
+#bams$Locality<-gsub("RD_","",bams$Location)
+
+meta<-bams %>% select(-Path, -Bam) %>% left_join(data)  %>% mutate(Individual=1:n())
+```
+
+
+## Related Individuals
+
+We'll plot those populations with related individuals at kinship > 0.0625     
+
+```{r}
+kin<-npyLoad("outputs/100/RD_all.kinship.kinship.npy")
+
+#Convert upper half of matrix to data frame compatible 
+kinrind<-which(upper.tri(kin, diag = TRUE), arr.ind = TRUE)
+kin<-cbind(kinrind, kin[kinrind])
+
+kindf<-as_tibble(kin) %>%
+  rename(Ind1=row, Ind2=col, Kinship=V3) %>%
+  filter(Ind1 != Ind2) %>%
+  mutate(Mean=mean(Kinship))
+
+#Can I replace Ind1 and Ind2 with individual labels???
+df<-kindf %>% left_join(meta, by=c("Ind1"="Individual")) %>% rename(Individual1=Label, Location1=Locality) %>%
+  left_join(meta, by=c("Ind2"="Individual")) %>% rename(Individual2=Label, Location2=Locality)
+
+#Ahh, and what are our "related" individuals
+df %>% filter(Kinship>0.0625) %>% group_by(Location1, Location2) %>% summarize(Count=n())
+
+high<-df %>% filter(Kinship>0.0625)
+
+#filter to the same pops and get those locations with closely related individuals
+popdf<-df %>% filter(Location1==Location2) %>% mutate(Population=Location1) %>%
+  filter(Population %in% high$Location1)
+
+#Plotting 
+cols<-viridis(6)
+
+ggplot(popdf)+geom_histogram(aes(x=Kinship), bins=50, fill="grey", color="grey") +
+  geom_vline(xintercept =.25, col=cols[1]) + #Parent offspring/full sibs
+  geom_vline(xintercept =.125, col=cols[2]) + #2nd degree
+  geom_vline(xintercept =.0625, col=cols[3]) + # 3rd
+  geom_vline(xintercept = .0313, col=cols[4]) +
+  geom_vline(xintercept = .0156, col=cols[5]) +
+  geom_vline(xintercept = 0.0, col=cols[6]) +
+  scale_x_continuous(breaks=c(0,0.0156, 0.0313, 0.0625, 0.125, 0.25),
+                     labels=c("0 / Unrelated","5th Deg.","4th Deg.","3rd Deg.", "2nd Deg.", "1st Deg.")) +
+  theme_bw() +
+  theme(axis.text.x = element_text(hjust=1, angle=45)) +
+  theme(panel.grid=element_blank()) +
+  ylab("Count") +
+  xlab("Kinship Coefficient")+
+  facet_wrap(Population ~ ., ncol=3, scales="free_y")
+```
+
+##PCA without excluding related individuals
+```{r}
+cov<-read_delim("outputs/100/RD_all_glh.cov", col_names=FALSE, delim=" ") %>% as.matrix()
+
+#' @param samples character vector with the individuals IDs in the order in which
+#' they were passed in the bamlist to angsd.
+#' @param cov covariance matrix
+covar2pcs <- function(samples, cov) {
+  
+  
+  eig <- eigen(cov, symm = TRUE)
+  PC <- as.data.frame(eig$vectors) %>%
+    as_tibble() %>%
+    setNames(sprintf("PC-%02d", 1:ncol(.)))
+  
+  samtib <- tibble(sample = samples)
+  
+  list(
+    PCs = bind_cols(samtib, PC),
+    eigevalues = eig$values
+  )
+}
+```
+
+```{r}
+
+pca <- covar2pcs(meta$Label, cov)
+
+pca_long <- pca$PCs %>%
+  tidyr::gather(., key = "PC", "val", -sample)
+
+# then expand a grid of the possible comparisons (ordered)
+expg <- expand.grid(sample = pca$PCs$sample,
+                    PCx = sprintf("PC-%02d", 1:6),
+                    PCy = sprintf("PC-%02d", 1:6),
+                    stringsAsFactors = FALSE) %>%
+  tibble::as_tibble()
+
+# then left join the pca results onto that
+pca_pairs <- dplyr::left_join(expg, pca_long, by = c("sample", "PCx" = "PC")) %>%
+  dplyr::rename(val_x = val) %>%
+  dplyr::left_join(pca_long, by = c("sample", "PCy" = "PC")) %>%
+  dplyr::rename(val_y = val)
+
+pp_meta <- pca_pairs %>%   # just keep the first 6 PCs around
+  left_join(., meta, by = c("sample" = "Label")) %>%
+  mutate(group = Locality) 
+```
+Plot.    
+```{r}
+
+npc <- 3
+pp_meta2 <- pp_meta %>%
+  filter( (PCx %in% sprintf("PC-%02d", 1:npc)) & 
+            (PCy %in% sprintf("PC-%02d", 1:npc)) )
+
+eig <- eigen(cov, symm = TRUE)
+var<-eig$values/sum(eig$values)
+cumvar<-cumsum(eig$values)/sum(eig$values)
+
+head(var)
+head(cumvar)
+
+
+
+sub12<-pp_meta2 %>% filter( (PCx =="PC-01") & (PCy =="PC-02") )
+centers12<-sub12 %>% group_by(Locality) %>% mutate(MeanX=mean(val_x), MeanY=mean(val_y)) %>% select(Locality, MeanX, MeanY) %>% unique()
+
+
+pc12<-ggplot(sub12, aes(x = val_x, y = val_y, color=Locality)) +
+  geom_point(size = 2, alpha=0.75) +
+  geom_text_repel(data=centers12, aes(x=MeanX, y=MeanY, label=Locality), color="black", fontface='bold', size=2)+
+  scale_fill_discrete(na.value = "white") + 
+  theme_bw()+
+  theme(panel.grid=element_blank())+
+  xlab(paste("PC1", " ", round((100*var[1]),2), "%", sep = ""))+
+  ylab(paste("PC2", " ", round((100*var[2]),2), "%", sep = ""))+
+  theme(legend.position = "")+
+  ggtitle("Related Individuals Included PCs 1 & 2")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+sub13<-pp_meta2 %>% filter( (PCx =="PC-01") & (PCy =="PC-03") )
+centers13<-sub13 %>% group_by(Locality) %>% mutate(MeanX=mean(val_x), MeanY=mean(val_y)) %>% select(Locality, MeanX, MeanY) %>% unique()
+
+pc13<-ggplot(sub13, aes(x = val_x, y = val_y, color = Locality)) +
+  geom_point(size = 2, alpha=0.75) +
+  geom_text_repel(data=centers13, aes(x=MeanX, y=MeanY, label=Locality), color="black", fontface='bold', size=2)+
+  scale_fill_discrete(na.value = "white") + 
+  theme_bw()+
+  theme(panel.grid=element_blank())+
+  xlab(paste("PC1", " ", round((100*var[1]),2), "%", sep = ""))+
+  ylab(paste("PC3", " ", round((100*var[3]),2), "%", sep = ""))+
+  theme(legend.position = "")+
+  ggtitle("Related Individuals Included PCs 1 & 3")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+ggarrange(pc12, pc13, ncol = 2)
+```
+
+
+
+Hmmm.... That seems to line up with what I expec. Now to plot without the related individuals.
+
+```{r}
+
+covk<-read_delim("outputs/100/RD_all-kinremoved.cov", col_names=FALSE, delim=" ") %>% as.matrix()
+
+excl<-npyLoad("outputs/100/RD_all-kinremoved.unrelated.npy") %>% as_tibble()
+
+
+#maybe the zeros are what we want?
+#These we can subset or meta
+kept<-meta$Individual[excl$value!=0]
+dropped<-meta$Individual[excl$value==0]
+
+#These are the ones that were dropped:
+meta %>% filter(Individual %in% dropped)
+```
+
+```{r}
+pcak <- covar2pcs(kept, covk)
+
+pca_longk <- pcak$PCs %>%
+  tidyr::gather(., key = "PC", "val", -sample)
+
+# then expand a grid of the possible comparisons (ordered)
+expgk <- expand.grid(sample = pcak$PCs$sample,
+                    PCx = sprintf("PC-%02d", 1:6),
+                    PCy = sprintf("PC-%02d", 1:6),
+                    stringsAsFactors = FALSE) %>%
+  tibble::as_tibble()
+
+# then left join the pca results onto that
+pca_pairsk <- dplyr::left_join(expgk, pca_longk, by = c("sample", "PCx" = "PC")) %>%
+  dplyr::rename(val_x = val) %>%
+  dplyr::left_join(pca_longk, by = c("sample", "PCy" = "PC")) %>%
+  dplyr::rename(val_y = val)
+
+npc <- 3
+pck <- pca_pairsk %>%
+  filter( (PCx %in% sprintf("PC-%02d", 1:npc)) & 
+            (PCy %in% sprintf("PC-%02d", 1:npc)) ) %>%
+  left_join(., meta, by = c("sample" = "Individual")) %>%
+  mutate(group = Locality) 
+
+eigk <- eigen(covk, symm = TRUE)
+vark <-eigk$values/sum(eigk$values)
+cumvark <-cumsum(eigk$values)/sum(eigk$values)
+
+head(vark)
+head(cumvark)
+
+pc12k<-pck %>% filter( (PCx =="PC-01") & (PCy =="PC-02") )
+centers12k<-pc12k %>% group_by(Locality) %>% mutate(MeanX=mean(val_x), MeanY=mean(val_y)) %>% select(Locality, MeanX, MeanY) %>% unique()
+
+
+k12<-ggplot(pc12k, aes(x=val_x, y=val_y, color=Locality))+
+  geom_point(size=2, alpha=0.75)+
+  geom_text_repel(data=centers12k, aes(x=MeanX, y=MeanY, label=Locality), color="black", fontface='bold', size=2)+
+  theme_bw()+
+  theme(panel.grid=element_blank())+
+  xlab(paste("PC1", " ", round((100*vark[1]),2), "%", sep = ""))+
+  ylab(paste("PC2", " ", round((100*vark[2]),2), "%", sep = ""))+
+  theme(legend.position = "")+
+  ggtitle("Related Individuals Excluded PCs 1 & 2")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+pc13k<-pck %>% filter( (PCx =="PC-01") & (PCy =="PC-03") )
+centers13k<-pc13k %>% group_by(Locality) %>% mutate(MeanX=mean(val_x), MeanY=mean(val_y)) %>% select(Locality, MeanX, MeanY) %>% unique()
+
+k13<-ggplot(pc13k, aes(x=val_x, y=val_y, color=Locality))+
+  geom_point(size=2, alpha=0.75)+
+  geom_text_repel(data=centers13k, aes(x=MeanX, y=MeanY, label=Locality), color="black", fontface='bold', size=2)+
+  theme_bw()+
+  theme(panel.grid=element_blank())+
+  xlab(paste("PC1", " ", round((100*vark[1]),2), "%", sep = ""))+
+  ylab(paste("PC2", " ", round((100*vark[3]),2), "%", sep = ""))+
+  theme(legend.position = "")+
+  ggtitle("Related Individuals Excluded PCs 1 & 3")+
+  scale_y_reverse()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+ggarrange(k12, k13, ncol = 2)
+
+```
+
+Outputing all
+```{r}
+ggarrange(pc12, pc13, k12, k13, ncol = 2, nrow = 2)
+ggsave("outputs/100/RD_all-pcs.pdf", width=9, height=9)
+```
