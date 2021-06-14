@@ -1,0 +1,30 @@
+---
+title: "1-relatedness"
+author: "Mac Campbell"
+date: "June 14, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+## Kinship Coefficients
+
+We need to see if there are related individuals and create a new bamlist for downstream analyses.
+
+```{sh, eval=FALSE}
+scp -P 2022 farm:/home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/lists/RD_all.bamlist bamlists/RD_all.bamlist
+```
+
+On cluster:
+
+```{sh, eval=FALSE}
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/all_admix/RD_all_glh.beagle.gz -o outputs/100/RD_all_glh -threads 10
+
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/all_admix/RD_all_glh.beagle.gz -kinship -o outputs/100/RD_all.kinship -threads 10
+
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/all_admix/RD_all_glh.beagle.gz \
+-relate outputs/100RD_all.kinship.kinship.npy -o outputs/100/RD_all-kinremoved -threads 10
+```
+
