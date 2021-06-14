@@ -61,7 +61,7 @@ bams$Label<-bams$Bam
 #bams$Location<-gsub("_\\d+","",bams$Label)
 #bams$Locality<-gsub("RD_","",bams$Location)
 
-meta<-bams %>% select(-Path, -Bam) %>% left_join(data)  %>% mutate(Individual=1:n())
+meta<-bams %>% left_join(data)  %>% mutate(Individual=1:n())
 ```
 
 
@@ -114,7 +114,7 @@ ggplot(popdf)+geom_histogram(aes(x=Kinship), bins=50, fill="grey", color="grey")
   facet_wrap(Population ~ ., ncol=3, scales="free_y")
 ```
 
-##PCA without excluding related individuals
+## PCA without excluding related individuals
 ```{r}
 cov<-read_delim("outputs/100/RD_all_glh.cov", col_names=FALSE, delim=" ") %>% as.matrix()
 
@@ -311,4 +311,32 @@ Outputing all
 ```{r}
 ggarrange(pc12, pc13, k12, k13, ncol = 2, nrow = 2)
 ggsave("outputs/100/RD_all-pcs.pdf", width=9, height=9)
+```
+
+
+## Prepating a Reduced Bamlist
+
+```{r}
+meta %>% filter(Individual %in% dropped) %>% select(Label, Individual)
+```
+
+```{r}
+keepers<-meta %>% filter(Individual %in% kept)
+keptbams <- keepers %>% select(Path)
+write_tsv(keptbams, "bamlists/rd-kin-removed.bamlist", col_names=FALSE)
+```
+
+Adding meta....    
+
+```{r}
+keepers$`Collection Locality`<-gsub(pattern = "GSJS_.*", replacement = "GSJS", keepers$Locality)
+keepers<-keepers %>% mutate(`Geographic Region`= ifelse(`Collection Locality` %in% c("BTOC","BTQP","RBFL","RBFR","RBRL","P226","P246"), "Western Valleys", 
+                ifelse(`Collection Locality` %in% c("GSTS"), "Twin Springs", "Eastern Valleys")))
+keepers$`Geographic Region`<-factor(keepers$`Geographic Region`, levels=c("Eastern Valleys", 
+                                                                      "Western Valleys",
+                                                                      "Twin Springs"))
+
+write_csv(keepers, "meta/rd-kin-removed-meta.csv")
+```
+
 ```

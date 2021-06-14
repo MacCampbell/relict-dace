@@ -1,0 +1,202 @@
+---
+title: "202-figure-2cd"
+author: "Mac Campbell"
+date: "June 14, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(RcppCNPy)
+library(ggpubr)
+library(gridExtra)
+library(grid)
+```
+
+
+## Figure 2c & 2d
+We need K=2 and K=3, and we can also do this with pcaangsd
+-What is our best K?
+-admix     
+-admix_K    
+-relate outputs/100/RD_all.kinship.kinship.npy     
+
+Best K?    
+```{sh, eval=FALSE}
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/all_admix/RD_all_glh.beagle.gz \
+-relate outputs/100/RD_all.kinship.kinship.npy  -admix -o outputs/202/RD_all_glh-bestk -threads 10
+```
+Parsing Beagle file
+Read 362 samples and 84590 sites
+Number of sites after MAF filtering (0.05): 82936      
+A best K of Estimating admixture with K=16, alpha=0, batch=10, seed=0      
+
+Generating K=2, K=3        
+```{sh, eval=FALSE}
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/all_admix/RD_all_glh.beagle.gz \
+-relate outputs/100/RD_all.kinship.kinship.npy  -admix -admix_K 2 -o outputs/202/RD_all_glh-k2 -threads 10
+
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/all_admix/RD_all_glh.beagle.gz \
+-relate outputs/100/RD_all.kinship.kinship.npy  -admix -admix_K 3 -o outputs/202/RD_all_glh-k3 -threads 10
+```
+
+Get local and plot.
+
+```{sh, eval=FALSE}
+scp -P 2022 farm:relict-dace/outputs/202/RD_all_glh-bestk* ./outputs/202/
+scp -P 2022 farm:relict-dace/outputs/202/RD_all_glh-k* ./outputs/202/
+```
+
+
+```{r}
+k2<-npyLoad("outputs/202/RD_all_glh-k2.admix.Q.npy") %>% as_tibble() %>% rename(Q1=V1, Q2=V2)
+k3<-npyLoad("outputs/202/RD_all_glh-k3.admix.Q.npy") %>% as_tibble() %>% rename(Q1=V1, Q2=V2, Q3=V3)
+k16<-npyLoad("outputs/202/RD_all_glh-bestk.admix.Q.npy") %>% as_tibble() 
+#Need to rename all colnames smartly!
+colnames(k16)<-gsub("V","Q",colnames(k16))
+```
+
+
+```{r}
+meta<-read_csv("meta/rd-kin-removed-meta.csv")
+
+k2df<-bind_cols(meta, k2)
+k3df<-bind_cols(meta, k3)
+q2s<-k2df %>% dplyr::select(Label, Locality, `Collection Locality`, Individual, Q1, Q2) %>% gather(key=Ancestry, value=Q, 5:6)
+
+q3s<-k3df %>% dplyr::select(Label, Locality, `Collection Locality`, Individual, Q1, Q2, Q3) %>% gather(key=Ancestry, value=Q, 5:7)
+```
+
+
+Plot some structure like plots.
+```{r}
+p2<-ggplot(q2s) +
+    geom_col(aes(x=Label, y=Q, fill=Ancestry), color="NA", size = 0)+
+    theme(axis.title.x=element_blank(),
+      axis.text.x=element_blank(),
+      axis.ticks.x=element_blank()) +
+  scale_fill_manual(values=c("red","blue"))
+ #  facet_wrap(. ~ Locality, scales="free_x", ncol=length(unique(q2s$Locality)))
+
+p2
+
+p3<-ggplot(q3s) +
+    geom_col(aes(x=Label, y=Q, fill=Ancestry), color="NA", size = 0)+
+    theme(axis.title.x=element_blank(),
+      axis.text.x=element_blank(),
+      axis.ticks.x=element_blank()) +
+  scale_fill_manual(values=c("red","lightgreen","blue"))
+
+p3
+```
+
+#Reordering
+We need to get our data with a single index for individuals.     
+We also need to be able to place population labels.    
+
+```{r}
+order<-c("GSJS","GSTS","SPKR","SPSH","STMR","STPR_RD6BT2","STPR_RD6FT1","STRT","STWA","BTOC","BTQP","RBFL","RBFR","P226","P246")
+
+k2k<-k2df %>% mutate(Place = ifelse(Locality=="P226","P226",
+                                           ifelse(Locality=="P246","P246",
+                                          `Collection Locality`)))
+k2k$`Collection Locality`<-k2k$Locality
+k2df$`Collection Locality`<-factor(k2df$`Collection Locality`, levels=order)
+
+```
+
+```{r}
+s2<-k2df%>% arrange(`Collection Locality`, Individual) %>% mutate(Index=1:n()) %>% dplyr::select(Label, Index, Locality, `Collection Locality`, Individual, Q1, Q2) %>% gather(key=Ancestry, value=Q, 6:7)
+
+
+
+pops2<-s2 %>% group_by(`Collection Locality`) %>% mutate(Start=min(Index), Stop=max(Index)) %>% 
+  select(`Collection Locality`,Start,Stop) %>% unique() %>% 
+  mutate(Position=round((Start+Stop)/2))
+```
+
+```{r}
+kplot2<-ggplot(s2) +
+  geom_col(aes(x=Index, y=Q, fill=Ancestry), color="NA", size = 0, width = 1)+
+  scale_fill_manual(values=c("blue","red")) +
+  geom_segment(data=pops2, x = pops2$Start - 0.5, y=0, xend = pops2$Start-0.5, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(data=pops2, x = pops2$Stop[length(pops2$Stop)]  + 0.5, y=0, xend= pops2$Stop[length(pops2$Stop)] + 0.5, yend=1,  alpha=0.9,
+               size=0.25) +
+  geom_segment(x=0, xend= pops2$Stop[length(pops2$Stop)], y=1, yend=1, alpha=0.9, size=0.25) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ylim(0,1.01) +
+  xlim(-0.1, pops2$Stop[length(pops2$Stop)]+1) +
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks=pops2$Position, labels=pops2$`Collection Locality`) +
+  xlab("") +
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank()) +
+  theme(legend.position = "NA")
+
+
+kplot2
+
+ggsave("outputs/202/k2.jpg", width=8)
+```
+
+```{r}
+
+k3k<-k3df %>% mutate(Place = ifelse(Locality=="P226","P226",
+                                           ifelse(Locality=="P246","P246",
+                                          `Collection Locality`)))
+k3k$`Collection Locality`<-k2k$Locality
+k3df$`Collection Locality`<-factor(k2df$`Collection Locality`, levels=order)
+
+s3<-k3df%>% arrange(`Collection Locality`, Individual) %>% mutate(Index=1:n()) %>% dplyr::select(Label, Index, Locality, `Collection Locality`, Individual, Q1, Q2, Q3) %>% gather(key=Ancestry, value=Q, 6:8)
+
+
+
+pops3<-s3 %>% group_by(`Collection Locality`) %>% mutate(Start=min(Index), Stop=max(Index)) %>% 
+  select(`Collection Locality`,Start,Stop) %>% unique() %>% 
+  mutate(Position=round((Start+Stop)/2))
+```
+
+```{r}
+kplot3<-ggplot(s3) +
+  geom_col(aes(x=Index, y=Q, fill=Ancestry), color="NA", size = 0, width = 1)+
+  scale_fill_manual(values=c("blue","light green","red")) +
+  geom_segment(data=pops3, x = pops2$Start - 0.5, y=0, xend = pops2$Start-0.5, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(data=pops3, x = pops2$Stop[length(pops3$Stop)]  + 0.5, y=0, xend= pops3$Stop[length(pops2$Stop)] + 0.5, yend=1,  alpha=0.9,
+               size=0.25) +
+  geom_segment(x=0, xend= pops3$Stop[length(pops3$Stop)], y=1, yend=1, alpha=0.9, size=0.25) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ylim(0,1.01) +
+  xlim(-0.1, pops3$Stop[length(pops3$Stop)]+1) +
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks=pops3$Position, labels=pops3$`Collection Locality`) +
+  xlab("Sampling Location") +
+  theme(legend.position="NA") +
+  theme(axis.text.x = element_text(size=8))
+
+
+kplot3
+
+ggsave("outputs/202/k3.jpg", width=8)
+```
+
+
+## Plot
+```{r}
+load("outputs/200/fig2a.rda")
+load("outputs/201/fig2b.rda")
+
+blank <- grid.rect(gp=gpar(col="white"))
+
+```
+
+```{r}
+ggarrange(arrangeGrob(arrangeGrob(fig2a, blank, nrow=2, heights=c(2,1)),fig2b, ncol=2, widths=c(1,1)), 
+          arrangeGrob(kplot2, kplot3, ncol=1, heights=c(2,2.7)),
+          ncol = 1, nrow = 2, widths = c(1,3), heights=c(10,6))
+ggsave("outputs/202/Figure-2.pdf", width=8.5, height=11)
+ggsave("outputs/202/Figure-2.jpg", width=8.5, height=11)
+
+```

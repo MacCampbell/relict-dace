@@ -1,0 +1,249 @@
+---
+title: "201-Figure-2b"
+author: "Mac Campbell"
+date: "June 14, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+```
+
+
+```{r}
+library(tidyverse)
+library(ggtree)
+library(ape)
+```
+
+## Coalescent Tree
+Generate a species-wide tree based on sampling locations with SVDQuartets.
+
+Steps:     
+__1__ Call SNPS as a PLINK file
+__2__ Recode to vcf
+__3__ Convert to phylip w/ASC
+__4__ ML test tree
+__5__ SVDQ
+
+__1__ Call SNPS as a PLINK file    
+We are using "/home/abenj93/projects/RelictDace/data/de_novo/RD_alignment/ref_contigs/RD_ref_final_contigs_300.fasta"    
+
+Redoing 05262021 with the rd-kin-removed.bamlist at 0.95 threshold (344), done in relictus/outputs/800 moving into relict-dace/201
+```{sh, eval=FALSE}
+srun -p high -t 48:00:00 --mem=16G --nodes=1 --ntasks=6 angsd -P 12 \
+-bam bamlists/rd-kin-removed.bamlist \
+-out /home/maccamp/relictus/outputs/800/plink \
+-anc /home/abenj93/projects/RelictDace/data/de_novo/RD_alignment/ref_contigs/RD_ref_final_contigs_300.fasta \
+-minInd 344 -minMaf 0.05  -minMapQ 20 -minQ 20 -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 \
+-doGeno 4 -doPost 1 -postCutoff 0.95 -doPlink 2 >outputs/800/std.out 2>outputs/800/std.err &
+
+#Plink following example (not used)
+srun -p high -t 48:00:00 --nodes=1 --mem=16G  --ntasks=6 angsd -P 12 \
+-bam bamlists/rd-kin-removed.bamlist \
+-out /home/maccamp/relictus/outputs/800/plink-angsd-manual \
+-anc /home/abenj93/projects/RelictDace/data/de_novo/RD_alignment/ref_contigs/RD_ref_final_contigs_300.fasta \
+-minInd 344 -minMaf 0.05  -minMapQ 20 -minQ 20 -GL 1 -doMajorMinor 1 -doMaf 2 -doCounts 1 -SNP_pval 1e-6 \
+-doGeno -4 -doPost 1 -postCutoff 0.95 -doPlink 2  >outputs/800/std-plink.out 2>outputs/800/std-plink.err &
+
+#vcf faults
+srun -p high -t 48:00:00 --mem=32G angsd -P 24 \
+-bam bamlists/rd-kin-removed.bamlist \
+-out /home/maccamp/relictus/outputs/800/do-vcf -dovcf 1 \
+-anc /home/abenj93/projects/RelictDace/data/de_novo/RD_alignment/ref_contigs/RD_ref_final_contigs_300.fasta \
+-minInd 344 -minMaf 0.05  -minMapQ 20 -minQ 20 -GL 1 -doMajorMinor 1 -doMaf 1 -SNP_pval 1e-6 \
+-doGeno 4 -doPost 1 -postCutoff 0.95  >outputs/800/std-vcf.out 2>outputs/800/std-vcf.err &
+```
+
+(base) maccamp@farm:~/relictus/outputs/800$ wc -l plink.tped      
+30673 plink.tped      
+(base) maccamp@farm:~/relictus/outputs/800$ wc -l plink-angsd-manual.tped      
+30663 plink-angsd-manual.tped
+Now is a good time to get the naming straight.       
+
+```{r}
+files<-read_tsv("bamlists/rd-kin-removed.bamlist", col_names = c("Path"))
+files$Sample<-gsub("/home/abenj93/projects/RelictDace/data/de_novo/RD_alignment/RAD_align/|_R1.sort.proper.rmdup.bam","",files$Path) 
+files<-files %>%  select(Sample, Path)
+
+locations<-read_tsv("meta/location-codes.tsv")
+
+meta<-left_join(files, locations, by=c("Sample"="label"))
+```
+
+
+Creating basic files in outputs/800 for making *.nexus file
+
+```{r}
+sample<-meta %>% select(Sample)
+write_tsv(sample, "outputs/201/sample.tsv", col_names = FALSE)
+
+locs<- meta %>% select(Sample, Locality)
+write_tsv(locs, "outputs/201/locs.tsv", col_names = FALSE)
+
+summary <- locs %>% group_by(Locality) %>% summarize(Samples=paste0(Sample, collapse="\t"))
+write_tsv(summary, "outputs/201/location-summary.tsv")
+```
+
+Making up a taxsets file in outputs/800/svdq (taxsets.txt) with PAUP commands.     
+
+__2__ Recode to vcf
+
+Get local in new-min-10, then:
+```{sh, eval=FALSE}
+plink --tped plink.tped --tfam plink.tfam  --out binary --recode --allow-extra-chr --noweb
+plink --ped binary.ped --map binary.map --recode vcf --allow-extra-chr -out recode
+bcftools +prune -l 0.9 -w 10000 recode.vcf  -Ov -o recode.prune.vcf
+```
+
+
+Can reheader like so:
+```{sh, eval=FALSE}
+bcftools reheader --samples ../sample.tsv -o recode.prune.reheadered.vcf recode.prune.vcf
+```
+
+__3__ Convert to phlyip with ASC
+
+Need py2
+```{sh, eval=FALSE}
+source activate py2; ~/github/mccloud-rrt/vcf2phylip.py -i recode.prune.reheadered.vcf; conda deactivate;
+
+#Now runnign py3, 
+ ~/github/mccloud-rrt/103-remove-invariant.py -p recode.prune.reheadered.min4.phy -o recode.prune.reheadered.min4.asc.phy
+```
+
+362 samples, 21489 sites
+
+__4__ ML test tree if desired....
+
+```{sh, eval=FALSE}
+iqtree -s outputs/800/new-min-10/recode.prune.reheadered.min4.asc.phy -st DNA -m MFP+ASC -bb 1000 -alrt 1000 -redo
+```
+
+
+__5__ SVDQ
+
+Have on cluster. In screen:
+
+```{sh, eval=FALSE}
+srun -p high -t 48:00:00 --nodes=4 --mem=32G $HOME/bin/paup4a168_ubuntu64 800.nex
+```
+
+Mssing data a problem
+__6__ Pruning missing data?
+
+recode.prune.reheadered.min4.phy
+
+remove missing now as 201.1-remove-missing.pl
+```{sh, eval=FALSE}
+  ../../../removeMissing.pl recode.prune.reheadered.min4.phy > recode.prune.reheadered.min4.10.phy
+#Making format conform better
+seqConverter.pl -drecode.prune.reheadered.min4.10.phy -ope
+ ~/github/mccloud-rrt/103-remove-invariant.py -p recode.prune.reheadered.min4.10.phylip -o recode.prune.reheadered.min4.10.asc.phy
+```
+
+Now we have:         
+
+338 21395         
+
+24 samples with > 10% missing data.         
+RD_BTOC_006         
+RD_BTOC_016         
+RD_BTQP_014         
+RD_GSJS_006         
+RD_GSJS_035         
+RD_GSJS_043         
+RD_GSJS_072         
+RD_GSJS_080         
+RD_GSTS_018         
+RD_RBFR_004         
+RD_RBFR_007         
+RD_RBFR_009         
+RD_RBFR_015         
+RD_RBFR_016         
+RD_RBFR_019         
+RD_SPKR_002         
+RD_SPKR_012         
+RD_SPSH_002         
+RD_SPSH_012         
+RD_STMR_017         
+RD_STRT_012         
+RD_STWA_015         
+RD_STWA_017         
+RD_STWA_019         
+         
+Need to remove "dumped.txt" from min10.nex. perl -pi -e?    
+
+ 
+running within new-min-10 directory.         
+Settings:    
+svdq evalq=random nquartets=100000 taxpartition=myPops nthreads=3;       
+svdq bootstrap=standard nreps=10 treeFile=svdq-test-bootstrap.trees replace=yes;        
+SaveTrees file=svdq-test.asc.tre brlens=yes supportValues=Both replace=yes;        
+
+Summarize sample sizes:
+`(base) Macs-MacBook-Pro-2:new-min-10 mac$ cut -f 1 -d ' ' dumped.txt > dumpers.txt`      
+
+```{r}
+dumped<-read_tsv("outputs/201/new-min-10/dumpers.txt", col_names = "Dumpers")
+locs %>% filter(Sample %in% dumped$Dumpers) %>% group_by(Locality) %>% summarize(Count=n())
+```
+
+```{r}
+keepers<-locs %>% filter(!(Sample %in% dumped$Dumpers)) %>% group_by(Locality) %>% summarize(`Sample Size`=n())
+
+keepers
+```
+
+Made new-min-10-for-cluster.nex, in:     
+`/home/maccamp/relictus/outputs/100/new-min-10`     
+svdq evalq=random nquartets=1000000 taxpartition=myPops nthreads=12;     
+svdq bootstrap=standard nreps=100 treeFile=svdq-test-bootstrap.asc.trees replace=yes;       
+SaveTrees file=svdq-100bs.asc.tre brlens=yes supportValues=Both replace=yes;         
+     
+Running in screen.      
+```{sh, eval=FALSE}
+srun -p high -t 72:00:00 --nodes=1 --mem=16G --nodes=1 $HOME/bin/paup4a168_ubuntu64 new-min-10-for-cluster.nex
+```
+
+```{r}
+t3<-read.nexus("outputs/201/new-min-10/cluster/svdq-100bs.asc.tre")
+t4<-as.polytomy(t3, feature='node.label', fun=function(x) as.numeric(x) < 70)
+
+ggtree(t4, branch.length = "none") %<+% keepers +
+  geom_tippoint(aes(size=`Sample Size`, x=x+0.2), pch=21, alpha=0.85, fill="grey50") +
+  geom_tiplab(size=4, offset = 0.5) + 
+  geom_nodelab(fontface="bold")+xlim(0,12)
+
+ggsave("outputs/201/new-min-10/cluster/quartets.jpg", width=7, height=5)
+ggsave("outputs/201/new-min-10/cluster/quartets.pdf", width=7, height=5)
+
+```
+
+
+## Include Colors
+We need some colors matching 2a
+
+```{r}
+
+keepers$`Collection Locality`<-gsub(pattern = "GSJS_.*", replacement = "GSJS", keepers$Locality)
+keepers<-keepers %>% mutate(`Geographic Region`= ifelse(`Collection Locality` %in% c("BTOC","BTQP","RBFL","RBFR","RBRL","P226","P246"), "Western Valleys", 
+                ifelse(`Collection Locality` %in% c("GSTS"), "Twin Springs", "Eastern Valleys")))
+keepers$`Geographic Region`<-factor(keepers$`Geographic Region`, levels=c("Eastern Valleys", 
+                                                                      "Western Valleys",
+                                                                      "Twin Springs"))
+```
+
+
+```{r}
+fig2b<-ggtree(t4, branch.length = "none") %<+% keepers +
+  geom_tippoint(aes(size=`Sample Size`, x=x+0.2, fill=`Geographic Region`), pch=21, alpha=0.85) +
+  geom_tiplab(size=3, offset = 0.5) + 
+  geom_nodelab(fontface="bold", size=3)+xlim(0,12) +
+  scale_fill_manual(values=c("blue","red","green"))
+
+fig2b
+ggsave("outputs/201/fig2b.pdf", width=8, height=5)
+save(fig2b,file="outputs/201/fig2b.rda")
+
+```
