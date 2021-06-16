@@ -1,0 +1,330 @@
+---
+title: "400-figure-4"
+author: "Mac Campbell"
+date: "6/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(gridExtra)
+library(grid)
+library(RcppCNPy)
+library(ggrepel)
+library(scatterpie)
+library(viridis)
+library(cowplot)
+library(magick)
+library(ggsn)
+```
+
+### Generate PCA/Admix files
+```{sh, eval=FALSE}
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/GSJS.ST.SP_admix/RD_GSJS.ST.SP_glh.beagle.gz -kinship -o outputs/400/RD_GSJS.ST.SP.kinship -threads 10
+
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/GSJS.ST.SP_admix/RD_GSJS.ST.SP_glh.beagle.gz \
+-relate outputs/400/RD_GSJS.ST.SP.kinship.kinship.npy -admix -o outputs/400/RD_GSJS.ST.SP-kinremoved -threads 10
+```
+
+
+Keeping 257 individuals after filtering (removing 14)
+Boolean vector of unrelated individuals saved as outputs/400/RD_GSJS.ST.SP-kinremoved.unrelated.npy (Binary)
+Parsing Beagle file
+Read 257 samples and 87711 sites
+
+Estimating population allele frequencies
+EM (MAF) converged at iteration: 14
+
+Number of sites after MAF filtering (0.05): 85931
+
+Estimating admixture with K=13, alpha=0, batch=10, seed=0
+
+
+## PCA
+
+```{r, echo=FALSE}
+#' @param samples character vector with the individuals IDs in the order in which
+#' they were passed in the bamlist to angsd.
+#' @param cov covariance matrix
+covar2pcs <- function(samples, cov) {
+  
+  
+  eig <- eigen(cov, symm = TRUE)
+  PC <- as.data.frame(eig$vectors) %>%
+    as_tibble() %>%
+    setNames(sprintf("PC-%02d", 1:ncol(.)))
+  
+  samtib <- tibble(sample = samples)
+  
+  list(
+    PCs = bind_cols(samtib, PC),
+    eigevalues = eig$values
+  )
+}
+```
+
+```{r}
+data<-read_tsv("meta/location-codes.tsv")
+bams<-read_tsv("bamlists/RD_GSJS.ST.SP.bamlist", col_names = c("Path"))
+bams$Bam<-gsub("/home/abenj93/projects/RelictDace/data/de_novo/RD_alignment/RAD_align/","",bams$Path)
+bams$Bam<-gsub("_R1.sort.proper.rmdup.bam","",bams$Bam)
+
+bams<-bams %>% select(Bam) %>% rename(label=Bam) %>% mutate(Individual=1:n())
+
+meta<-left_join(bams, data)
+
+covk<-read_delim("outputs/400/RD_GSJS.ST.SP-kinremoved.cov", col_names=FALSE, delim=" ") %>% as.matrix()
+
+#now we have 257 fish. We lost 14 due to relatedness filtering.... I don't know which ones that would be though.
+#Boolean vector of unrelated individuals saved as RD_GSJS.ST.SP-kinremoved.unrelated.npy (Binary)
+#I guess I'll have to go from that binary file.
+excl<-npyLoad("outputs/400/RD_GSJS.ST.SP-kinremoved.unrelated.npy") %>% as_tibble()
+
+
+#maybe the zeros are what we want?
+#These we can subset or meta
+kept<-meta$Individual[excl$value!=0]
+dropped<-meta$Individual[excl$value==0]
+
+#These are the ones that were dropped:
+meta %>% filter(Individual %in% dropped)
+```
+
+```{r}
+pcak <- covar2pcs(kept, covk)
+
+pca_longk <- pcak$PCs %>%
+  tidyr::gather(., key = "PC", "val", -sample)
+
+# then expand a grid of the possible comparisons (ordered)
+expgk <- expand.grid(sample = pcak$PCs$sample,
+                    PCx = sprintf("PC-%02d", 1:6),
+                    PCy = sprintf("PC-%02d", 1:6),
+                    stringsAsFactors = FALSE) %>%
+  tibble::as_tibble()
+
+# then left join the pca results onto that
+pca_pairsk <- dplyr::left_join(expgk, pca_longk, by = c("sample", "PCx" = "PC")) %>%
+  dplyr::rename(val_x = val) %>%
+  dplyr::left_join(pca_longk, by = c("sample", "PCy" = "PC")) %>%
+  dplyr::rename(val_y = val)
+
+npc <- 3
+pck <- pca_pairsk %>%
+  filter( (PCx %in% sprintf("PC-%02d", 1:npc)) & 
+            (PCy %in% sprintf("PC-%02d", 1:npc)) ) %>%
+  left_join(., meta, by = c("sample" = "Individual")) %>%
+  mutate(group = Locality) 
+
+eigk <- eigen(covk, symm = TRUE)
+vark <-eigk$values/sum(eigk$values)
+cumvark <-cumsum(eigk$values)/sum(eigk$values)
+
+head(vark)
+head(cumvark)
+
+pc12k<-pck %>% filter( (PCx =="PC-01") & (PCy =="PC-02") )
+centers12k<-pc12k %>% group_by(Locality) %>% mutate(MeanX=mean(val_x), MeanY=mean(val_y)) %>% select(Locality, MeanX, MeanY) %>% unique()
+
+
+k12<-ggplot(pc12k, aes(x=val_x, y=val_y, color=Locality))+
+  geom_point(size=2, alpha=0.75)+
+  theme_bw()+
+  theme(panel.grid=element_blank())+
+  xlab(paste("PC1", " ", round((100*vark[1]),2), "%", sep = ""))+
+  ylab(paste("PC2", " ", round((100*vark[2]),2), "%", sep = ""))+
+  theme(legend.position = "")+
+  #ggtitle("Related Individuals Excluded PCs 1 & 2")+
+  scale_x_reverse() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+k12 +  geom_text_repel(data=centers12k, aes(x=MeanX, y=MeanY, label=Locality), color="black", fontface='bold', size=2, max.overlaps = Inf)
+fig5a<-k12
+```
+
+## Admixture
+
+```{r}
+k13<-npyLoad("outputs/400/RD_GSJS.ST.SP-kinremoved.admix.Q.npy") %>% as_tibble() %>% rename(Q1=V1, Q2=V2, Q3=V3, Q4=V4, Q5=V5, Q6=V6, Q7=V7, Q8=V8, Q9=V9, Q10=V10, Q11=V11, Q12=V12, Q13=V13) %>% mutate(Individual=1:n()) %>% mutate(Index=1:n())
+
+keepers<-as_tibble(kept) %>% rename(Individual=value)
+keepersMeta<-left_join(keepers, meta) %>% select(-Individual)
+#keepersMeta$`Collection Locality`<-gsub(pattern = "GSJS_.*", replacement="GSJS", keepersMeta$Locality)
+keepersMeta$`Collection Locality`<-keepersMeta$Locality
+k13df<-bind_cols(keepersMeta, k13)
+
+q13s<-k13df  %>% arrange(`Collection Locality`) %>% mutate(Index=1:n()) %>% dplyr::select(label, Locality, `Collection Locality`, Index, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9,Q10,Q11,Q12,Q13) %>% gather(key=Ancestry, value=Q, 5:17)
+
+q13s$`Collection Locality`<-as.factor(q13s$`Collection Locality`)
+
+#need some levels
+levels<-colnames(k13 %>% select(-Individual, -Index))
+q13s$Ancestry<-factor(q13s$Ancestry, levels=levels)
+```
+
+
+```{r}
+pops13<-q13s %>% group_by(`Collection Locality`) %>% mutate(Start=min(Index), Stop=max(Index)) %>% 
+  select(`Collection Locality`,Start,Stop) %>% unique() %>% 
+  mutate(Position=round((Start+Stop)/2)) %>% arrange(`Collection Locality`)
+```
+
+
+```{r}
+pops2<-pops13
+kplot13<-ggplot(q13s) +
+  geom_col(aes(x=Index, y=Q, fill=Ancestry), color="NA", size = 0, width = 1)+
+#  scale_fill_manual(values=c("blue","red")) +
+  geom_segment(data=pops2, x = pops2$Start - 0.5, y=0, xend = pops2$Start-0.5, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(data=pops2, x = pops2$Stop[length(pops2$Stop)]  + 0.5, y=0, xend= pops2$Stop[length(pops2$Stop)] + 0.5, yend=1,  alpha=0.9,
+               size=0.25) +
+  geom_segment(x=0, xend= pops2$Stop[length(pops2$Stop)], y=1, yend=1, alpha=0.9, size=0.25) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ylim(0,1.01) +
+  xlim(-0.1, pops2$Stop[length(pops2$Stop)]+1) +
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks=pops2$Position, labels=pops2$`Collection Locality`) +
+  xlab("") +
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank()) +
+  scale_x_continuous(breaks=pops2$Position, labels=pops2$`Collection Locality`) +
+  xlab("Sampling Location") +
+#  theme(legend.position="NA") +
+  theme(axis.text.x = element_text(size=6, angle=45, hjust=1)) 
+
+kplot13
+```
+
+## Plot of GSJS
+Scatterpies don't use tidy data.
+
+```{r}
+total<-left_join(pc12k, k13df)
+toplot<-total %>% select(-sample, -PCx, -PCy, -label, -Locality, -group, -Individual, -Index)
+```
+
+Let's look at GSJS node pies placed with coordinates and average pops.
+
+```{r}
+lats<-read_csv("meta/dace-and-snail-distribution.csv") %>% mutate(`Collection Locality`=paste0("GSJS_",Spring)) %>%
+  select(-RelictDace, -SpringSnail, -Notes)
+```
+
+```{r}
+newplot<-toplot %>% left_join(lats) %>% na.omit()
+sum<-newplot %>% select(-Spring) %>% group_by(`Collection Locality`) %>% summarise_all(list(mean))
+springs <- newplot %>% select(`Collection Locality`, Spring) %>% unique()
+sum<-left_join(sum, springs)
+sum$`Collection Locality`<-as.factor(sum$`Collection Locality`)
+```
+
+Get background imagery:
+
+```{r}
+image<-image_read("outputs/400/crop.png")
+image2 <- image_fill(image, 'none')
+raster <- as.raster(image2)
+Longitude<-c(-114.7,-114.3)
+Latitude<-c(40.73,41.2)
+corners<-cbind(Longitude,Latitude) %>% as_tibble()
+```
+
+```{r}
+pies<-ggplot(corners, aes(x=Longitude, y=Latitude)) +
+  geom_point() +
+  annotation_raster(raster, xmin = -114.525017-.001, xmax = -114.472267, ymin =  40.952688, ymax =  40.989213) +
+  geom_scatterpie(data=sum %>% select(-val_x, -val_y, Spring), 
+                    aes(x=Longitude, y=Latitude, group=`Collection Locality`, r=.0008), 
+                           cols=colnames(toplot %>% select(-val_x, -val_y, -`Collection Locality`)),
+                           color=NA) +
+  geom_text_repel(data=sum, aes(x=Longitude, y=Latitude, label=Spring), color="white", fontface="bold", size=3) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  theme(legend.position = "") +
+  coord_fixed(ratio=1, xlim=c(-114.522, -114.495), ylim=c(40.96,40.987)) +
+  ggsn::scalebar(x.min = -114.522, x.max= -114.495, y.min=40.96, y.max=40.987,
+                 dist = .5, dist_unit = "km", st.size=3, height=0.02, transform=TRUE, model = 'WGS84',
+                 st.color="black")
+
+
+pies
+```
+
+
+Get colors the same:
+https://stackoverflow.com/questions/8197559/emulate-ggplot2-default-color-palette
+```{r}
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+```
+
+```{r}
+n=13
+cols = gg_color_hue(n)
+dev.new(width = 4, height = 4)
+plot(1:n, pch = 16, cex = 2, col = cols)
+
+```
+
+
+
+```{r}
+qs<-colnames(toplot %>% select(-val_x, -val_y, -`Collection Locality`))
+q13st<-q13s
+q13st$Ancestry<-factor(q13st$Ancestry, levels=qs)
+
+k13plot<-ggplot(q13st) +
+  geom_col(aes(x=Index, y=Q, fill=Ancestry), color="NA", size = 0, width = 1)+
+#  scale_fill_manual(values=c("blue","red")) +
+  geom_segment(data=pops2, x = pops2$Start - 0.5, y=0, xend = pops2$Start-0.5, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(data=pops2, x = pops2$Stop[length(pops2$Stop)]  + 0.5, y=0, xend= pops2$Stop[length(pops2$Stop)] + 0.5, yend=1,  alpha=0.9,
+               size=0.25) +
+  geom_segment(x=0, xend= pops2$Stop[length(pops2$Stop)], y=1, yend=1, alpha=0.9, size=0.25) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ylim(0,1.01) +
+  xlim(-0.1, pops2$Stop[length(pops2$Stop)]+1) +
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks=pops2$Position, labels=pops2$`Collection Locality`) +
+  xlab("") +
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank()) +
+  scale_x_continuous(breaks=pops2$Position, labels=pops2$`Collection Locality`) +
+  xlab("Sampling Location") +
+#  theme(legend.position="NA") +
+  theme(axis.text.x = element_text(size=6, angle=45, hjust=1)) 
+
+k13plot
+```
+
+```{r}
+k13plot2<-k13plot+scale_fill_viridis(option="plasma", discrete=TRUE) + theme(legend.position = "") 
+k13plot2
+```
+
+```{r}
+fig5b<-pies+scale_fill_viridis(option="plasma", discrete=TRUE) + 
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  guides(fill=guide_legend(title="Ancestry Proportion")) +
+  theme(legend.key.size = unit(.5, 'cm')) +
+  theme(legend.text = element_text(size=6)) +
+  theme(legend.title = element_text(size=8)) 
+
+fig5b
+```
+
+## Plot
+
+```{r}
+ggarrange(arrangeGrob(k12,fig5b, ncol=2, widths=c(1,1.5)), k13plot2,
+          ncol = 1, nrow = 2, widths = c(3,3), heights=c(20,12))
+
+ggsave("outputs/400/Figure-4.jpg", width=8.5, height=11/2)
+ggsave("outputs/400/Figure-4.pdf", width=8.5, height=11/2)
+
+```
+
