@@ -1,0 +1,33 @@
+---
+title: "300-figure-3"
+author: "Mac Campbell"
+date: "6/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(gridExtra)
+library(grid)
+library(RcppCNPy)
+library(ggrepel)
+```
+
+## Calculations
+```{sh, eval=FALSE}
+cp /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/lists/RD_BT.RB.bamlist ./bamlists/
+
+#wc -l RD_BT.RB.bamlist 
+#101 RD_BT.RB.bamlist
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/BT.RB_admix/RD_BT.RB_glh.beagle.gz -o outputs/300/RD_BT.RB_glh -threads 10
+
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/BT.RB_admix/RD_BT.RB_glh.beagle.gz -kinship -o outputs/300/RD_BT.RB.kinship -threads 10
+
+python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/BT.RB_admix/RD_BT.RB_glh.beagle.gz \
+-relate outputs/300/RD_BT.RB.kinship.kinship.npy -o outputs/300/RD_BT.RB-kinremoved -admix -threads 10
+```
