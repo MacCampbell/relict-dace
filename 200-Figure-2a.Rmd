@@ -126,7 +126,7 @@ ggarrange(k12, k13, ncol = 2)
 
 Now for panel a:
 ```{r}
-fig2a<-ggplot(pc12k, aes(x=val_x, y=val_y, fill=`Geographic Region`, color=`Geographic Region`))+
+plot12<-ggplot(pc12k, aes(x=val_x, y=val_y, fill=`Geographic Region`, color=`Geographic Region`))+
   scale_color_manual(values=c("blue","green","red")) +
   scale_fill_manual(values=c("blue","green","red")) +
   geom_point(size=2, alpha=0.75, pch=21)+
@@ -139,7 +139,31 @@ fig2a<-ggplot(pc12k, aes(x=val_x, y=val_y, fill=`Geographic Region`, color=`Geog
   #ggtitle("Related Individuals Excluded PCs 1 & 2")+
   theme(plot.title = element_text(hjust = 0.5))
 
+plot12
+```
+
+```{r}
+plot13<-ggplot(pc13k, aes(x=val_x, y=val_y, fill=`Geographic Region`, color=`Geographic Region`))+
+  scale_color_manual(values=c("blue","green","red")) +
+  scale_fill_manual(values=c("blue","green","red")) +
+  geom_point(size=2, alpha=0.75, pch=21)+
+ # geom_text_repel(data=centers12k, aes(x=MeanX, y=MeanY, label=Locality), color="black", fontface='bold', size=2)+
+  theme_bw()+
+  theme(panel.grid=element_blank())+
+  xlab(paste("\n","PC1", " (", round((100*vark[1]),2), "%)", sep = ""))+
+  ylab(paste("PC3", " (", round((100*vark[3]),2), "%)","\n", sep = ""))+
+  theme(legend.position = "")+
+  #ggtitle("Related Individuals Excluded PCs 1 & 2")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot13
+```
+
+```{r}
+fig2a<-ggarrange(plot12, plot13, ncol=1)
 fig2a
-ggsave("outputs/200/fig2a.pdf", width=6, height=5)
+```
+```{r}
+ggsave("outputs/200/fig2a.pdf", width=6, height=10)
 save(fig2a,file="outputs/200/fig2a.rda")
 ```

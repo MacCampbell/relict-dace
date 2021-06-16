@@ -31,3 +31,212 @@ python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/d
 python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/BT.RB_admix/RD_BT.RB_glh.beagle.gz \
 -relate outputs/300/RD_BT.RB.kinship.kinship.npy -o outputs/300/RD_BT.RB-kinremoved -admix -threads 10
 ```
+
+Keeping 100 individuals after filtering (removing 1)
+Boolean vector of unrelated individuals saved as outputs/300/RD_BT.RB-kinremoved.unrelated.npy (Binary)
+Parsing Beagle file
+Read 100 samples and 50632 sites
+
+Estimating population allele frequencies
+EM (MAF) converged at iteration: 14
+
+Number of sites after MAF filtering (0.05): 50345
+Estimating admixture with K=4, alpha=0, batch=10, seed=0
+
+### 3a PCA
+
+```{r}
+#' @param samples character vector with the individuals IDs in the order in which
+#' they were passed in the bamlist to angsd.
+#' @param cov covariance matrix
+covar2pcs <- function(samples, cov) {
+  
+  
+  eig <- eigen(cov, symm = TRUE)
+  PC <- as.data.frame(eig$vectors) %>%
+    as_tibble() %>%
+    setNames(sprintf("PC-%02d", 1:ncol(.)))
+  
+  samtib <- tibble(sample = samples)
+  
+  list(
+    PCs = bind_cols(samtib, PC),
+    eigevalues = eig$values
+  )
+}
+```
+
+Get covariance matrix and meta.
+
+```{r}
+
+#meta
+data<-read_tsv("meta/location-codes.tsv") %>% rename(Label=label)
+
+bams<-read_tsv("bamlists/RD_BT.RB.bamlist", col_names = c("Path"))
+bams$Bam<-gsub("/home/abenj93/projects/RelictDace/data/de_novo/RD_alignment/RAD_align/","",bams$Path)
+bams$Bam<-gsub("_R1.sort.proper.rmdup.bam","",bams$Bam)
+bams$Label<-bams$Bam
+
+#bams$Location<-gsub("_\\d+","",bams$Label)
+#bams$Locality<-gsub("RD_","",bams$Location)
+
+meta<-bams %>% select(-Path, -Bam) %>% left_join(data)  %>% mutate(Individual=1:n())
+
+#cov
+covk<-read_delim("outputs/300/RD_BT.RB-kinremoved.cov", col_names=FALSE, delim=" ") %>% as.matrix()
+
+excl<-npyLoad("outputs/300/RD_BT.RB-kinremoved.unrelated.npy") %>% as_tibble()
+
+
+#maybe the zeros are what we want?
+#These we can subset or meta
+kept<-meta$Individual[excl$value!=0]
+dropped<-meta$Individual[excl$value==0]
+
+#These are the ones that were dropped:
+meta %>% filter(Individual %in% dropped)
+```
+
+
+```{r}
+pcak <- covar2pcs(kept, covk)
+
+pca_longk <- pcak$PCs %>%
+  tidyr::gather(., key = "PC", "val", -sample)
+
+# then expand a grid of the possible comparisons (ordered)
+expgk <- expand.grid(sample = pcak$PCs$sample,
+                    PCx = sprintf("PC-%02d", 1:6),
+                    PCy = sprintf("PC-%02d", 1:6),
+                    stringsAsFactors = FALSE) %>%
+  tibble::as_tibble()
+
+# then left join the pca results onto that
+pca_pairsk <- dplyr::left_join(expgk, pca_longk, by = c("sample", "PCx" = "PC")) %>%
+  dplyr::rename(val_x = val) %>%
+  dplyr::left_join(pca_longk, by = c("sample", "PCy" = "PC")) %>%
+  dplyr::rename(val_y = val)
+
+npc <- 3
+pck <- pca_pairsk %>%
+  filter( (PCx %in% sprintf("PC-%02d", 1:npc)) & 
+            (PCy %in% sprintf("PC-%02d", 1:npc)) ) %>%
+  left_join(., meta, by = c("sample" = "Individual")) %>%
+  mutate(group = Locality) 
+
+eigk <- eigen(covk, symm = TRUE)
+vark <-eigk$values/sum(eigk$values)
+cumvark <-cumsum(eigk$values)/sum(eigk$values)
+
+head(vark)
+head(cumvark)
+
+pc12k<-pck %>% filter( (PCx =="PC-01") & (PCy =="PC-02") )
+
+```
+Plotting.    
+```{r}
+centers12k<-pc12k %>% group_by(Locality) %>% mutate(MeanX=mean(val_x), MeanY=mean(val_y)) %>% select(Locality, MeanX, MeanY) %>% unique()
+
+k12<-ggplot(pc12k, aes(x=val_x, y=val_y, color=Locality))+
+  geom_point(size=2, alpha=0.75)+
+  geom_text_repel(data=centers12k, aes(x=MeanX, y=MeanY, label=Locality), color="black", fontface='bold', size=2)+
+  theme_bw()+
+  theme(panel.grid=element_blank())+
+  xlab(paste("PC1", " ", round((100*vark[1]),2), "%", sep = ""))+
+  ylab(paste("PC2", " ", round((100*vark[2]),2), "%", sep = "")) +
+#  ggtitle("Related Individuals Excluded PCs 1 & 2")+
+#  theme(plot.title = element_text(hjust = 0.5))
+  theme(legend.position = "")
+
+
+
+
+pc13k<-pck %>% filter( (PCx =="PC-01") & (PCy =="PC-03") )
+centers13k<-pc13k %>% group_by(Locality) %>% mutate(MeanX=mean(val_x), MeanY=mean(val_y)) %>% select(Locality, MeanX, MeanY) %>% unique()
+
+k13<-ggplot(pc13k, aes(x=val_x, y=val_y, color=Locality))+
+  geom_point(size=2, alpha=0.75)+
+  geom_text_repel(data=centers13k, aes(x=MeanX, y=MeanY, label=Locality), color="black", fontface='bold', size=2)+
+  theme_bw()+
+  theme(legend.position = "")+
+  theme(panel.grid=element_blank())+
+  xlab(paste("PC1", " ", round((100*vark[1]),2), "%", sep = ""))+
+  ylab(paste("PC3", " ", round((100*vark[3]),2), "%", sep = ""))+
+#  ggtitle("Related Individuals Excluded PCs 1 & 3")+
+  scale_y_reverse()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+ggarrange(k12, k13, ncol = 2)
+
+```
+
+### 3b Admixture
+Best k of 4
+```{r}
+k4<-npyLoad("outputs/300/RD_BT.RB-kinremoved.admix.Q.npy") %>% as_tibble() %>% rename(Q1=V1, Q2=V2, Q3=V3, Q4=V4)
+keepers<-as_tibble(kept) %>% rename(Individual=value)
+keepersMeta<-left_join(keepers, meta)
+k4df<-bind_cols(keepersMeta, k4) %>% rename(`Sampling Location` = `Locality`)
+```
+
+
+```{r}
+s4<-k4df%>% arrange(`Sampling Location`, Individual) %>% mutate(Index=1:n()) %>% dplyr::select(Label, Index, `Sampling Location`, Individual, Q1, Q2, Q3, Q4) %>% gather(key=Ancestry, value=Q, 5:8)
+
+pops4<-s4 %>% group_by(`Sampling Location`) %>% mutate(Start=min(Index), Stop=max(Index)) %>% 
+  select(`Sampling Location`,Start,Stop) %>% unique() %>% 
+  mutate(Position=round((Start+Stop)/2))
+```
+
+
+```{r}
+kplot4<-ggplot(s4) +
+  geom_col(aes(x=Index, y=Q, fill=Ancestry), color="NA", size = 0, width = 1)+
+  geom_segment(data=pops4, x = pops4$Start - 0.5, y=0, xend = pops4$Start-0.5, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(data=pops4, x = pops4$Stop[length(pops4$Stop)]  + 0.5, y=0, xend= pops4$Stop[length(pops4$Stop)] + 0.5, yend=1,  alpha=0.9,
+               size=0.25) +
+  geom_segment(x=0, xend= pops4$Stop[length(pops4$Stop)], y=1, yend=1, alpha=0.9, size=0.25) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ylim(0,1.01) +
+  xlim(-0.1, pops4$Stop[length(pops4$Stop)]+1) +
+  theme(panel.background = element_blank())+
+  scale_x_continuous(breaks=pops4$Position, labels=pops4$`Sampling Location`) +
+  xlab("") +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  theme(legend.position = "NA") +
+  scale_fill_manual(values=c("#0072B2","#D55E00","#009E73","#E69F00"))
+
+
+kplot4
+
+```
+
+Setting same colors for PCA
+
+Getting colors set:
+```{r}
+k12plus<-k12 +
+    scale_color_manual(values=c("#D55E00","#D55E00","#E69F00","#009E73","#0072B2","#0072B2"))
+k12plus
+```
+
+```{r}
+k13plus<-k13 +
+    scale_color_manual(values=c("#D55E00","#D55E00","#E69F00","#009E73","#0072B2","#0072B2"))
+k13plus
+```
+
+### Combine
+```{r}
+blank <- grid.rect(gp=gpar(col="white"))
+
+ggarrange(arrangeGrob(k12plus,k13plus, ncol=2, widths=c(1,1)),
+          kplot4,ncol = 1, nrow = 2, widths = c(1,3), heights=c(3,1.5))
+
+ggsave("outputs/300/Figure-3.jpg", width=11/2, height=8.5/2)
+ggsave("outputs/300/Figure-3.pdf", width=11/2, height=8.5/2)
+
+```
