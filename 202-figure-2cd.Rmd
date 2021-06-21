@@ -55,9 +55,6 @@ scp -P 2022 farm:relict-dace/outputs/202/RD_all_glh-k* ./outputs/202/
 ```{r}
 k2<-npyLoad("outputs/202/RD_all_glh-k2.admix.Q.npy") %>% as_tibble() %>% rename(Q1=V1, Q2=V2)
 k3<-npyLoad("outputs/202/RD_all_glh-k3.admix.Q.npy") %>% as_tibble() %>% rename(Q1=V1, Q2=V2, Q3=V3)
-k16<-npyLoad("outputs/202/RD_all_glh-bestk.admix.Q.npy") %>% as_tibble() 
-#Need to rename all colnames smartly!
-colnames(k16)<-gsub("V","Q",colnames(k16))
 ```
 
 

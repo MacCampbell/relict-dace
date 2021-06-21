@@ -1,0 +1,58 @@
+---
+title: "500-supplemental-figure-S1"
+author: "Mac Campbell"
+date: "6/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+## Optimal K of Range-Wide Dataset
+It is 16.
+```{r}
+k16<-npyLoad("outputs/202/RD_all_glh-bestk.admix.Q.npy") %>% as_tibble() 
+#Need to rename all colnames smartly!
+colnames(k16)<-gsub("V","Q",colnames(k16))
+
+meta<-read_csv("meta/rd-kin-removed-meta.csv")
+order<-c("GSJS","GSTS","SPKR","SPSH","STMR","STPR_RD6BT2","STPR_RD6FT1","STRT","STWA","BTOC","BTQP","RBFL","RBFR","P226","P246")
+meta$`Collection Locality`<-factor(meta$`Collection Locality`, levels=order)
+s16<-bind_cols(meta,k16) %>% arrange(`Collection Locality`, Individual) %>% mutate(Index=1:n()) %>% dplyr::select(Label, Index, Locality, `Collection Locality`, Individual, gsub("V","Q",colnames(k16))) %>% gather(key=Ancestry, value=Q, 6:21)
+
+s16$Ancestry<-factor(s16$Ancestry, levels=gsub("V","Q",colnames(k16)))
+```
+
+```{r}
+labels<-s16  %>% group_by(`Locality`) %>% mutate(Start=min(Index), Stop=max(Index)) %>% 
+  select(`Locality`,Start,Stop) %>% unique() %>% 
+  mutate(Position=round((Start+Stop)/2))
+```
+
+```{r}
+ggplot(s16) + 
+  geom_col(aes(x=Index, y=Q, fill=Ancestry), color="NA", size = 0, width = 1)+
+  geom_segment(data=labels, x = labels$Start - 0.5, y=0, xend = labels$Start-0.5, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(data=labels, x = labels$Stop[length(labels$Stop)]  + 0.5, y=0, xend=labels$Stop[length(labels$Stop)] + 0.5, yend=1,  alpha=0.9,
+               size=0.25) +
+  geom_segment(x=0, xend=labels$Stop[length(labels$Stop)], y=1, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(x=0, xend=labels$Stop[length(labels$Stop)], y=0, yend=-0.0, alpha=0.9, size=0.25) +
+  theme_bw() + 
+  theme(panel.grid = element_blank()) +
+  scale_fill_viridis_d(option="plasma") +
+  ylim(-0.001,1.01) +
+  xlim(-0.1, labels$Stop[length(labels$Stop)]+1) +
+  scale_x_continuous(breaks=labels$Position, labels=labels$`Locality`) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  xlab("") +
+  ylab("Q\n")
+
+ggsave("outputs/500/supplemental-figure-s1.jpg", width=12, height=8)
+ggsave("outputs/500/supplemental-figure-s1.pdf", width=12, height=8)
+
+```

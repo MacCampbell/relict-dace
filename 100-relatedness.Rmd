@@ -339,4 +339,14 @@ keepers$`Geographic Region`<-factor(keepers$`Geographic Region`, levels=c("Easte
 write_csv(keepers, "meta/rd-kin-removed-meta.csv")
 ```
 
+### Generating a table of individual meta, sample sizes/sampling location.
+
+```{r}
+summary<-meta %>% bind_cols(excl) %>% mutate(`Kinship Retention`=ifelse(value==0,"Excluded","Retained")) %>% select(Locality, Label,`Kinship Retention`) %>%
+  group_by(Locality, `Kinship Retention`) %>% summarize(Count=n()) %>% arrange(`Kinship Retention`)
+
+write_csv(summary,"meta/rd-sample-size-summary.csv")
+```
+
+
 ```
