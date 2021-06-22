@@ -1,0 +1,101 @@
+---
+title: "700-supplemental-figure-s3"
+author: "Mac Campbell"
+date: "6/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+## Supplemental Figure 3 - mulitple Ks
+This is of multiple Ks in the eastern valleys, K in 2..15?
+
+Generate Ks.
+
+```{sh, eval=FALSE}
+for i in {2..15};
+  do echo $i; 
+
+  python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/GSJS.ST.SP_admix/RD_GSJS.ST.SP_glh.beagle.gz \
+-relate outputs/400/RD_GSJS.ST.SP.kinship.kinship.npy -admix -admix_K $i -o outputs/700/RD_GSJS.ST.SP-kinremoved-$i -threads 10
+
+done;
+```
+
+Get meta.
+```{r}
+data<-read_tsv("meta/location-codes.tsv")
+bams<-read_tsv("bamlists/RD_GSJS.ST.SP.bamlist", col_names = c("Path"))
+bams$Bam<-gsub("/home/abenj93/projects/RelictDace/data/de_novo/RD_alignment/RAD_align/","",bams$Path)
+bams$Bam<-gsub("_R1.sort.proper.rmdup.bam","",bams$Bam)
+
+bams<-bams %>% select(Bam) %>% rename(label=Bam) %>% mutate(Individual=1:n())
+
+meta<-left_join(bams, data)
+
+excl<-npyLoad("outputs/400/RD_GSJS.ST.SP-kinremoved.unrelated.npy") %>% as_tibble()
+
+kept<-meta$Individual[excl$value!=0]
+dropped<-meta$Individual[excl$value==0]
+
+meta<- meta %>% filter(Individual %in% kept) %>% rename(Site=Locality)
+```
+
+## Plot
+
+```{r}
+PlotPCAdmix<- function(file) {
+  
+q<-npyLoad(file) %>% as_tibble() 
+#Make generic colnames
+
+colnames(q)<-gsub("V","Q",colnames(q))
+
+qs<-length(colnames(q))
+#Arrange Sites
+
+r<-bind_cols(meta,q) %>% arrange(Site) %>% mutate(Index=1:n())
+
+r$Site<-factor(r$Site, levels=unique(r$Site))
+
+rdf<-r %>% select(Site, Index,  colnames(q) ) %>% gather(key=Ancestry, value=Q, 3:(3+length(colnames(q))-1))
+rdf$Ancestry<-factor(rdf$Ancestry, levels=colnames(q))
+
+#Make names for structure-like plot
+labels<-rdf  %>% group_by(Site) %>% mutate(Start=min(Index), Stop=max(Index)) %>% 
+  select(Site,Start,Stop) %>% unique() %>% 
+  mutate(Position=round((Start+Stop)/2))
+
+#Plot
+plot<-ggplot(rdf) + 
+  geom_col(aes(x=Index,y=Q, fill=Ancestry), color="NA", size = 0, width = 1)+
+  geom_segment(data=labels, x = labels$Start - 0.5, y=0, xend = labels$Start-0.5, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(data=labels, x = labels$Stop[length(labels$Stop)]  + 0.5, y=0, xend=labels$Stop[length(labels$Stop)] + 0.5, yend=1,  alpha=0.9,
+               size=0.25) +
+  geom_segment(x=0, xend=labels$Stop[length(labels$Stop)], y=1, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(x=0, xend=labels$Stop[length(labels$Stop)], y=0, yend=-0.0, alpha=0.9, size=0.25) +
+  theme_bw() + 
+  theme(panel.grid = element_blank()) +
+  scale_fill_viridis_d(option="plasma") +
+  ylim(-0.001,1.01) +
+  xlim(-0.1, labels$Stop[length(labels$Stop)]+1) +
+  scale_x_continuous(breaks=labels$Position, labels=labels$Site) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  xlab("") 
+
+ggsave(paste0("outputs/700/pcangsd-admix-",qs,".jpg"), width=12, height=8)
+ggsave(paste0("outputs/700/pcangsd-admix-",qs,".pdf"), width=12, height=8)
+
+}
+```
+
+```{r}
+files<-list.files("outputs/700/", pattern="admix.Q.npy", full.names = TRUE)
+plots<-lapply(files, PlotPCAdmix)
+```
