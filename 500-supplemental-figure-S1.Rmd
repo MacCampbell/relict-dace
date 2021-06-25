@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
 
 ```{r}
 library(tidyverse)
+library(RcppCNPy)
 ```
 
 ## Optimal K of Range-Wide Dataset
@@ -35,7 +36,7 @@ labels<-s16  %>% group_by(`Locality`) %>% mutate(Start=min(Index), Stop=max(Inde
 ```
 
 ```{r}
-ggplot(s16) + 
+s1<-ggplot(s16) + 
   geom_col(aes(x=Index, y=Q, fill=Ancestry), color="NA", size = 0, width = 1)+
   geom_segment(data=labels, x = labels$Start - 0.5, y=0, xend = labels$Start-0.5, yend=1, alpha=0.9, size=0.25) +
   geom_segment(data=labels, x = labels$Stop[length(labels$Stop)]  + 0.5, y=0, xend=labels$Stop[length(labels$Stop)] + 0.5, yend=1,  alpha=0.9,
@@ -52,7 +53,36 @@ ggplot(s16) +
   xlab("") +
   ylab("Q\n")
 
+s1
 ggsave("outputs/500/supplemental-figure-s1.jpg", width=12, height=8)
 ggsave("outputs/500/supplemental-figure-s1.pdf", width=12, height=8)
 
 ```
+
+Get Colors:
+```{r}
+cols<-scales::viridis_pal(option = "plasma")(length(levels(s16$Ancestry)))
+coldf<-bind_cols(cols, levels(s16$Ancestry)) %>% mutate(Q=1:n())
+coldf
+ggplot(coldf, aes(x=Q, y=Q))  +
+  geom_point(color=coldf$...1, size=10) +
+  geom_text(aes(x=Q, y=Q, label=...2)) +
+  theme_bw()
+```
+
+Summarize all.
+```{r}
+tidy<-s16 %>% select(`Collection Locality`, Locality, Ancestry, Q, Index) %>%  group_by(`Collection Locality`, Locality, Ancestry) %>% summarise_all(list(mean)) %>%
+  mutate(Count=n()) %>% left_join(coldf %>% select(-Q), by=c("Ancestry"="...2"))
+save(tidy, file="outputs/500/colors-s1.rda")
+```
+
+```{r}
+ggplot(tidy) +
+    geom_col(aes(x=Index, y=Q, fill=Ancestry), color="NA", size = 0) +
+    scale_fill_viridis_d(option="plasma") +
+    theme(axis.text.x = element_text(angle=45, hjust=1)) +
+    scale_x_continuous(breaks=labels$Position, labels=labels$`Locality`) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) 
+```
+
