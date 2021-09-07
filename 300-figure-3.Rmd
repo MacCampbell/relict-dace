@@ -16,6 +16,7 @@ library(gridExtra)
 library(grid)
 library(RcppCNPy)
 library(ggrepel)
+library(viridis)
 ```
 
 ## Calculations
@@ -148,7 +149,9 @@ k12<-ggplot(pc12k, aes(x=val_x, y=val_y, color=Locality))+
   ylab(paste("PC2", " ", round((100*vark[2]),2), "%", sep = "")) +
 #  ggtitle("Related Individuals Excluded PCs 1 & 2")+
 #  theme(plot.title = element_text(hjust = 0.5))
-  theme(legend.position = "")
+  theme(legend.position = "") + 
+  ggtitle("A")+
+  theme(plot.title = element_text(face="bold", size=16))
 
 
 
@@ -165,8 +168,10 @@ k13<-ggplot(pc13k, aes(x=val_x, y=val_y, color=Locality))+
   xlab(paste("PC1", " ", round((100*vark[1]),2), "%", sep = ""))+
   ylab(paste("PC3", " ", round((100*vark[3]),2), "%", sep = ""))+
 #  ggtitle("Related Individuals Excluded PCs 1 & 3")+
-  scale_y_reverse()+
-  theme(plot.title = element_text(hjust = 0.5))
+  ggtitle("B") +
+  theme(plot.title = element_text(face="bold", size=16)) +
+  scale_y_reverse()
+#  theme(plot.title = element_text(hjust = 0.5))
 
 
 ggarrange(k12, k13, ncol = 2)
@@ -207,7 +212,9 @@ kplot4<-ggplot(s4) +
   xlab("") +
   theme(axis.text.x = element_text(angle=45, hjust=1)) +
   theme(legend.position = "NA") +
-  scale_fill_manual(values=c("#0072B2","#D55E00","#009E73","#E69F00"))
+  scale_fill_manual(values=c("#0072B2","#D55E00","#009E73","#E69F00")) + 
+  ggtitle("C")+
+  theme(plot.title = element_text(face="bold", size=16))
 
 
 kplot4
@@ -240,3 +247,82 @@ ggsave("outputs/300/Figure-3.jpg", width=11/2, height=8.5/2)
 ggsave("outputs/300/Figure-3.pdf", width=11/2, height=8.5/2)
 
 ```
+
+### Adding Fst and Theta
+
+```{r}
+### Western Valley ###
+RD_west = read.table("outputs/300/western_valley.fst.tsv", header = T, sep = '\t') %>% as_tibble()
+
+#RD_west$Pop1<-gsub("RBRL226","P226",RD_west$Pop1)
+#RD_west$Pop2<-gsub("RBRL226","P226",RD_west$Pop2)
+
+#RD_west$Pop1<-gsub("RBRL246","P246",RD_west$Pop1)
+#RD_west$Pop2<-gsub("RBRL246","P246",RD_west$Pop2)
+
+#RD_west$Pop1<-as.factor(RD_west$Pop1, levels=c(""))
+#RD_west$Pop2<-as.factor(RD_west$Pop2)
+
+fst<-ggplot(RD_west, aes(Pop2, Pop1)) + 
+  geom_tile(aes(fill = Fst), color="white") + 
+  theme_minimal() + 
+  scale_fill_viridis(discrete=FALSE, option = "cividis", space = "Lab", direction = -1) + 
+  theme_bw() + 
+  theme(axis.text.x=element_text(angle=45,vjust=1,size=10,hjust=1), panel.border=element_blank(),
+        panel.grid.major=element_blank(), axis.title.y = element_blank(), axis.title.x = element_blank()) + scale_y_discrete(position = "left") + 
+  geom_text(aes(label = round(Fst, 2)), size=3.5, colour = "white") + 
+  ggtitle("D") + 
+  theme(plot.title = element_text(face="bold", size=16)) +
+  scale_x_discrete(labels=c("BTQP","RBFL","RBFR","P226","P246")) +
+  scale_y_discrete(labels=c("BTOC","BTQP","RBFL","RBFR","P226"))
+
+fst
+```
+
+```{r}
+RD_west = read.table("outputs/300/western_valley.diversity.tsv", header = T, sep = '\t')
+RD_west[,c(3,4)] = RD_west[,c(3,4)]/RD_west$nSites
+RD_west = subset(RD_west, tW < 0.0125 & tP < 0.0125)
+RD_west$Pop<-gsub("RBRL226","P226",RD_west$Pop)
+RD_west$Pop<-gsub("RBRL246","P246",RD_west$Pop)
+
+pi <- ggplot(RD_west, aes(x=Pop, y=tP)) + 
+  stat_boxplot(geom ='errorbar') +
+  geom_boxplot(aes(fill=Pop), notch=FALSE, outlier.size=0.15, outlier.stroke = 0, outlier.alpha=0.5) + 
+  labs(y = "Theta Pi") + 
+  labs(x="") +
+  theme_bw() +
+  scale_y_continuous(breaks=seq(0.00,0.05,0.0025)) + 
+  ggtitle(label = "E") +
+  theme(plot.title = element_text(face="bold", size=16)) +
+  theme(panel.grid = element_blank()) +
+  theme(legend.position = "") +
+  scale_fill_manual(values=c("#D55E00","#D55E00","#E69F00","#009E73","#0072B2","#0072B2")) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.title.x=element_blank()) 
+  #scale_x_discrete(labels=c("BTOC",BTQP","RBFL","RBFR","P226","P246"))
+
+pi
+```
+
+## Plot
+
+
+
+```{r}
+g<-ggarrange(arrangeGrob(k12plus,k13plus,blank,blank, ncol=2, nrow=2, widths=c(1,1), heights=c(4,1)),
+          kplot4, ncol = 1, nrow = 2, widths = c(1,3), heights=c(3,1.5))+
+  theme(plot.margin=margin(t = 0.1, r = 1, b = 1, l = 0.1, unit = "cm"))
+
+h<-ggarrange(fst, blank, pi, ncol=1, nrow=3, heights=c(1,.25,1))
+```
+
+```{r}
+ggarrange(g,h, ncol=2, widths=c(1.5,1))
+
+ggsave("outputs/300/Figure-3-new.jpg", width=11, height=6.5)
+ggsave("outputs/300/Figure-3-new.pdf", width=11, height=6.5)
+
+```
+  
+  
+ 

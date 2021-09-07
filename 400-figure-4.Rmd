@@ -23,6 +23,12 @@ library(magick)
 library(ggsn)
 ```
 
+label size
+```{r}
+txt<-8
+size<-18
+```
+
 ### Generate PCA/Admix files
 ```{sh, eval=FALSE}
 python $HOME/pcangsd/pcangsd.py -beagle /home/abenj93/projects/RelictDace/data/de_novo/RD_popgen/results_admix/GSJS.ST.SP_admix/RD_GSJS.ST.SP_glh.beagle.gz -kinship -o outputs/400/RD_GSJS.ST.SP.kinship -threads 10
@@ -140,13 +146,31 @@ k12<-ggplot(pc12k, aes(x=val_x, y=val_y, color=Locality))+
   ylab(paste("PC2", " ", round((100*vark[2]),2), "%", sep = ""))+
   theme(legend.position = "")+
   #ggtitle("Related Individuals Excluded PCs 1 & 2")+
-  scale_x_reverse() +
-  theme(plot.title = element_text(hjust = 0.5))
+  scale_x_reverse() 
+  #theme(plot.title = element_text(hjust = 0.5))
 
 k12 +  geom_text_repel(data=centers12k, aes(x=MeanX, y=MeanY, label=Locality), color="black", fontface='bold', size=2, max.overlaps = Inf)
 fig5a<-k12
 ```
 
+
+Let's add lables for SPKR, SPSH, STRT & STWA, STPR, STMR, GSJS
+
+```{r}
+GSJS<-centers12k %>% filter(str_detect(Locality, "GSJS")) %>% ungroup() %>% mutate(Area="Johnson Springs") %>% group_by(Area) %>% mutate(x=mean(MeanX), y=mean(MeanY)) %>% 
+  select(Area, x, y) %>% unique()
+STPR<-centers12k %>% filter(str_detect(Locality, "STPR"))  %>% ungroup() %>% mutate(Area="STPR BT2 & FT1") %>% group_by(Area) %>% mutate(x=mean(MeanX), y=mean(MeanY)) %>% 
+  select(Area, x, y) %>% unique()
+others<-centers12k %>% filter(Locality %in% c("SPKR", "SPSH", "STMR", "STRT", "STWA")) %>%
+  rename(Area=Locality, x=MeanX, y=MeanY)
+
+labels<-bind_rows(GSJS,STPR,others)
+fig4a<-k12 +  geom_text_repel(data=labels, aes(x=x, y=y, label=Area), color="black", fontface='bold', size=3, max.overlaps = Inf) +
+  ggtitle(label = "A") +
+  theme(plot.title = element_text(face="bold", size=16)) 
+
+fig4a
+```
 ## Admixture
 
 ```{r}
@@ -290,10 +314,9 @@ k13plot<-ggplot(q13st) +
   ylim(0,1.01) +
   xlim(-0.1, pops2$Stop[length(pops2$Stop)]+1) +
   theme(panel.background = element_blank())+
-  scale_x_continuous(breaks=pops2$Position, labels=pops2$`Collection Locality`) +
   xlab("") +
   theme(axis.text.x = element_blank(), axis.ticks.x=element_blank()) +
-  scale_x_continuous(breaks=pops2$Position, labels=pops2$`Collection Locality`) +
+  scale_x_continuous(breaks=pops2$Position, labels=gsub("RD6","",pops2$`Collection Locality`)) +
   xlab("Sampling Location") +
 #  theme(legend.position="NA") +
   theme(axis.text.x = element_text(size=6, angle=45, hjust=1)) 
@@ -302,25 +325,32 @@ k13plot
 ```
 
 ```{r}
-k13plot2<-k13plot+scale_fill_viridis(option="plasma", discrete=TRUE) + theme(legend.position = "") 
-k13plot2
+
+fig4b<-k13plot+scale_fill_viridis(option="plasma", discrete=TRUE) + theme(legend.position = "") +
+  theme(axis.title.x = element_blank()) +
+  ggtitle(label = "B") +
+  theme(plot.title = element_text(face="bold", size=16)) +
+  theme(axis.text.x = element_text(size=txt))
+fig4b
 ```
 
 ```{r}
-fig5b<-pies+scale_fill_viridis(option="plasma", discrete=TRUE) + 
+fig4c<-pies+scale_fill_viridis(option="plasma", discrete=TRUE) + 
   theme(axis.text.x = element_text(angle=45, hjust=1)) +
   guides(fill=guide_legend(title="Ancestry Proportion")) +
   theme(legend.key.size = unit(.5, 'cm')) +
   theme(legend.text = element_text(size=6)) +
-  theme(legend.title = element_text(size=8)) 
+  theme(legend.title = element_text(size=8)) +
+    ggtitle(label = "C") +
+  theme(plot.title = element_text(face="bold", size=16)) 
 
-fig5b
+fig4c
 ```
 
 ## Plot
 
 ```{r}
-ggarrange(arrangeGrob(k12,fig5b, ncol=2, widths=c(1,1.5)), k13plot2,
+ggarrange(arrangeGrob(fig4a,fig4c, ncol=2, widths=c(1,1.5)), fig4b,
           ncol = 1, nrow = 2, widths = c(3,3), heights=c(20,12))
 
 ggsave("outputs/400/Figure-4.jpg", width=8.5, height=11/2)
@@ -328,3 +358,81 @@ ggsave("outputs/400/Figure-4.pdf", width=8.5, height=11/2)
 
 ```
 
+## Fst and Theta Pi
+```{r}
+
+RD_east = read.table("outputs/400/eastern_valley.fst.tsv", header = T, sep = '\t')
+RD_east$Pop1<-gsub("STPR","STPR_",RD_east$Pop1)
+RD_east$Pop2<-gsub("STPR","STPR_",RD_east$Pop2)
+
+RD_east$Pop1<-factor(RD_east$Pop1, levels=c("GSTS","GSJS_BS","GSJS_CS02","GSJS_CS03","GSJS_CS04","GSJS_CS11","GSJS_CS16","GSJS_CS22A","GSJS_NS03","GSJS_NS05","GSJS_SS19","SPKR","SPSH","STMR","STPR_BT2","STPR_FT1","STRT"))
+
+fst<-ggplot(RD_east, aes(Pop2, Pop1)) + 
+  geom_tile(aes(fill = Fst), color="white") + 
+  theme_minimal() + 
+  scale_fill_viridis(discrete=FALSE, option = "cividis", space = "Lab", direction = -1) + 
+  theme_bw() + 
+  theme(axis.text.x=element_text(angle=45,vjust=1,size=txt,hjust=1), panel.border=element_blank(),
+        panel.grid.major=element_blank(), axis.title.y = element_blank(), axis.title.x = element_blank()) + scale_y_discrete(position = "left") + 
+  theme(axis.text.y=element_text(size=txt)) +
+#  geom_text(aes(label = round(Fst, 2)), size=3.5, colour = "white") + 
+  ggtitle("D") + 
+  theme(plot.title = element_text(face="bold", size=16)) 
+ 
+fst
+```
+
+```{r}
+RD_east = read.table("outputs/400/eastern_valley.diversity.tsv", header = T, sep = '\t')
+RD_east[,c(3,4)] = RD_east[,c(3,4)]/RD_east$nSites
+RD_east = subset(RD_east, tW < 0.020 & tP < 0.020)
+RD_east_means=aggregate(RD_east[,3:5], list(RD_east$Pop), FUN=mean, header=TRUE)
+
+
+pi <- ggplot(RD_east, aes(x=Pop, y=tP)) + 
+  stat_boxplot(geom ='errorbar') +
+  geom_boxplot(aes(fill=Pop), notch=FALSE, outlier.size=0.15, outlier.stroke = 0, outlier.alpha=0.5) + 
+  labs(y = "Theta Pi") + 
+  labs(x="") +
+  theme_bw() +
+  scale_y_continuous(breaks=seq(0.00,0.05,0.0025)) + 
+  ggtitle(label = "E") +
+  theme(plot.title = element_text(face="bold", size=16)) +
+  theme(panel.grid = element_blank()) +
+  theme(legend.position = "") +
+  #scale_fill_manual(values=c("#D55E00","#D55E00","#E69F00","#009E73","#0072B2","#0072B2")) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size=txt), axis.title.x=element_blank()) +
+  theme(axis.text.y = element_text(size=txt+4)) +
+  theme(axis.title = element_text(size = size))
+  #scale_x_discrete(labels=c("BTOC",BTQP","RBFL","RBFR","P226","P246"))
+
+pi
+```
+
+## Plot
+```{r}
+blank <- grid.rect(gp=gpar(col="white"))
+```
+
+```{r}
+g<-ggarrange(arrangeGrob(arrangeGrob(fig4a+theme(axis.title = element_text(size = size)) +
+                                       theme(axis.text = element_text(size=txt+4)),blank, ncol=1, nrow=2, heights =c(9,1)),
+                         fig4c+theme(axis.title = element_text(size = size)) +
+                           theme(axis.text = element_text(size=txt+4)), ncol=2, widths=c(1,1.5)), 
+             arrangeGrob(fig4b+theme(axis.title = element_text(size = size)) + 
+                               theme(axis.text.y = element_text(size=txt+4)),blank, ncol=1, heights=c(8,2)),
+          ncol = 1, nrow = 2, widths = c(3,3), heights=c(20,12))
+
+g
+```
+
+```{r}
+h<-ggarrange(fst, pi, ncol=1, nrow=2)
+h
+```
+
+```{r}
+ggarrange(g, h, ncol=2, widths=c(1.5,1))
+ggsave("outputs/400/Figure-4-new.jpg", width=18, height=8.5)
+ggsave("outputs/400/Figure-4-new.pdf", width=18, height=8.5)
+```
