@@ -436,3 +436,13 @@ ggarrange(g, h, ncol=2, widths=c(1.5,1))
 ggsave("outputs/400/Figure-4-new.jpg", width=18, height=8.5)
 ggsave("outputs/400/Figure-4-new.pdf", width=18, height=8.5)
 ```
+
+Making Supplemental Figure S4
+
+```{r}
+fst +
+  geom_text(aes(label = round(Fst, 2)), size=3.5, colour = "white") + 
+  ggtitle("")
+
+ggsave("outputs/400/Supplemental Figure S4.jpg")
+```

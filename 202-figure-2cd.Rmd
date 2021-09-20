@@ -15,6 +15,7 @@ library(RcppCNPy)
 library(ggpubr)
 library(gridExtra)
 library(grid)
+library(cowplot)
 ```
 
 
@@ -60,7 +61,7 @@ k3<-npyLoad("outputs/202/RD_all_glh-k3.admix.Q.npy") %>% as_tibble() %>% rename(
 
 ```{r}
 meta<-read_csv("meta/rd-kin-removed-meta.csv")
-
+meta$`Collection Locality`<-gsub("RD6","",meta$`Collection Locality`)
 k2df<-bind_cols(meta, k2)
 k3df<-bind_cols(meta, k3)
 q2s<-k2df %>% dplyr::select(Label, Locality, `Collection Locality`, Individual, Q1, Q2) %>% gather(key=Ancestry, value=Q, 5:6)
@@ -96,18 +97,18 @@ We need to get our data with a single index for individuals.
 We also need to be able to place population labels.    
 
 ```{r}
-order<-c("GSJS","GSTS","SPKR","SPSH","STMR","STPR_RD6BT2","STPR_RD6FT1","STRT","STWA","BTOC","BTQP","RBFL","RBFR","P226","P246")
+order<-c("GSJS","GSTS","SPKR","SPSH","STMR","STPR_BT2","STPR_FT1","STRT","STWA","BTOC","BTQP","RBFL","RBFR","P226","P246")
 
 k2k<-k2df %>% mutate(Place = ifelse(Locality=="P226","P226",
                                            ifelse(Locality=="P246","P246",
                                           `Collection Locality`)))
-k2k$`Collection Locality`<-k2k$Locality
+
 k2df$`Collection Locality`<-factor(k2df$`Collection Locality`, levels=order)
 
 ```
 
 ```{r}
-s2<-k2df%>% arrange(`Collection Locality`, Individual) %>% mutate(Index=1:n()) %>% dplyr::select(Label, Index, Locality, `Collection Locality`, Individual, Q1, Q2) %>% gather(key=Ancestry, value=Q, 6:7)
+s2<-k2df%>% arrange(`Collection Locality`, `Locality`, Individual) %>% mutate(Index=1:n()) %>% dplyr::select(Label, Index, Locality, `Collection Locality`, Individual, Q1, Q2) %>% gather(key=Ancestry, value=Q, 6:7)
 
 
 
@@ -144,24 +145,24 @@ ggsave("outputs/202/k2.jpg", width=8)
 k3k<-k3df %>% mutate(Place = ifelse(Locality=="P226","P226",
                                            ifelse(Locality=="P246","P246",
                                           `Collection Locality`)))
-k3k$`Collection Locality`<-k2k$Locality
-k3df$`Collection Locality`<-factor(k2df$`Collection Locality`, levels=order)
+
+k3df$`Collection Locality`<-factor(k3df$`Collection Locality`, levels=order)
 
 s3<-k3df%>% arrange(`Collection Locality`, Individual) %>% mutate(Index=1:n()) %>% dplyr::select(Label, Index, Locality, `Collection Locality`, Individual, Q1, Q2, Q3) %>% gather(key=Ancestry, value=Q, 6:8)
-
 
 
 pops3<-s3 %>% group_by(`Collection Locality`) %>% mutate(Start=min(Index), Stop=max(Index)) %>% 
   select(`Collection Locality`,Start,Stop) %>% unique() %>% 
   mutate(Position=round((Start+Stop)/2))
+pops3$`Collection Locality`
 ```
 
 ```{r}
 kplot3<-ggplot(s3) +
   geom_col(aes(x=Index, y=Q, fill=Ancestry), color="NA", size = 0, width = 1)+
   scale_fill_manual(values=c("blue","light green","red")) +
-  geom_segment(data=pops3, x = pops2$Start - 0.5, y=0, xend = pops2$Start-0.5, yend=1, alpha=0.9, size=0.25) +
-  geom_segment(data=pops3, x = pops2$Stop[length(pops3$Stop)]  + 0.5, y=0, xend= pops3$Stop[length(pops2$Stop)] + 0.5, yend=1,  alpha=0.9,
+  geom_segment(data=pops3, x = pops3$Start - 0.5, y=0, xend = pops3$Start-0.5, yend=1, alpha=0.9, size=0.25) +
+  geom_segment(data=pops3, x = pops3$Stop[length(pops3$Stop)]  + 0.5, y=0, xend= pops3$Stop[length(pops3$Stop)] + 0.5, yend=1,  alpha=0.9,
                size=0.25) +
   geom_segment(x=0, xend= pops3$Stop[length(pops3$Stop)], y=1, yend=1, alpha=0.9, size=0.25) +
   theme(axis.text.x = element_text(angle=45, hjust=1)) +
@@ -187,10 +188,11 @@ load("outputs/201/fig2b.rda")
 ```
 
 ```{r}
-ggarrange(arrangeGrob(fig2a,fig2b, ncol=2, widths=c(1,1)), 
-          arrangeGrob(kplot2, kplot3, ncol=1, heights=c(2,2.7)),
+ggarrange(arrangeGrob(fig2a,fig2b + ggtitle("E"), ncol=2, widths=c(1,1)), 
+          arrangeGrob(kplot2 + ggtitle("C") + theme(plot.title = element_text(size=16, face="bold", hjust=0)),
+                      kplot3 + ggtitle("D") + theme(plot.title = element_text(size=16, face="bold", hjust=0)), ncol=1, heights=c(2,2.7)),
           ncol = 1, nrow = 2, widths = c(1,3), heights=c(10,6))
-ggsave("outputs/202/Figure-2.pdf", width=8.5, height=11)
-ggsave("outputs/202/Figure-2.jpg", width=8.5, height=11)
+ggsave("outputs/202/Figure-2-new.pdf", width=8.5, height=11)
+ggsave("outputs/202/Figure-2-new.jpg", width=8.5, height=11)
 
 ```

@@ -11,6 +11,9 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
 
 ```{r}
 library(tidyverse)
+library(RcppCNPy)
+library(gridExtra)
+library(gtools)
 ```
 
 ## Supplemental Figure 3 - mulitple Ks
@@ -45,6 +48,7 @@ kept<-meta$Individual[excl$value!=0]
 dropped<-meta$Individual[excl$value==0]
 
 meta<- meta %>% filter(Individual %in% kept) %>% rename(Site=Locality)
+meta$Site<-gsub("RD6","",meta$Site)
 ```
 
 ## Plot
@@ -87,15 +91,28 @@ plot<-ggplot(rdf) +
   xlim(-0.1, labels$Stop[length(labels$Stop)]+1) +
   scale_x_continuous(breaks=labels$Position, labels=labels$Site) +
   theme(axis.text.x = element_text(angle=45, hjust=1)) +
-  xlab("") 
+  xlab("") +
+  ggtitle(paste0("K = ", qs)) +
+  theme(plot.title = element_text(hjust=0.5, face="bold"))
+
 
 ggsave(paste0("outputs/700/pcangsd-admix-",qs,".jpg"), width=12, height=8)
 ggsave(paste0("outputs/700/pcangsd-admix-",qs,".pdf"), width=12, height=8)
 
+return(plot)
 }
 ```
 
 ```{r}
-files<-list.files("outputs/700/", pattern="admix.Q.npy", full.names = TRUE)
+files<-mixedsort(list.files("outputs/700/", pattern="admix.Q.npy", full.names = TRUE), decreasing=TRUE)
 plots<-lapply(files, PlotPCAdmix)
+```
+
+
+```{r}
+jpeg(filename = "outputs/700/Supplemental Figure S3.jpeg",width=12, height=54, units = "in", res = 300)
+
+grid.arrange(grobs=plots, ncol=1)
+
+dev.off()
 ```

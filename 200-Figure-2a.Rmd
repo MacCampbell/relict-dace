@@ -160,7 +160,9 @@ plot13
 ```
 
 ```{r}
-fig2a<-ggarrange(plot12, plot13, ncol=1)
+fig2a<-ggarrange(plot12 + ggtitle("A") + theme(plot.title = element_text(size=16, face="bold", hjust=0)),
+                 plot13 + ggtitle("B") + theme(plot.title = element_text(size=16, face="bold", hjust=0)), 
+  ncol=1)
 fig2a
 ```
 ```{r}

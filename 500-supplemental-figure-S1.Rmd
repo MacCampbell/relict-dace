@@ -22,9 +22,11 @@ k16<-npyLoad("outputs/202/RD_all_glh-bestk.admix.Q.npy") %>% as_tibble()
 colnames(k16)<-gsub("V","Q",colnames(k16))
 
 meta<-read_csv("meta/rd-kin-removed-meta.csv")
-order<-c("GSJS","GSTS","SPKR","SPSH","STMR","STPR_RD6BT2","STPR_RD6FT1","STRT","STWA","BTOC","BTQP","RBFL","RBFR","P226","P246")
+meta$`Collection Locality`<-gsub("RD6","",meta$`Collection Locality`)
+meta$Locality<-gsub("RD6","",meta$Locality)
+order<-c("GSJS","GSTS","SPKR","SPSH","STMR","STPR_BT2","STPR_FT1","STRT","STWA","BTOC","BTQP","RBFL","RBFR","P226","P246")
 meta$`Collection Locality`<-factor(meta$`Collection Locality`, levels=order)
-s16<-bind_cols(meta,k16) %>% arrange(`Collection Locality`, Individual) %>% mutate(Index=1:n()) %>% dplyr::select(Label, Index, Locality, `Collection Locality`, Individual, gsub("V","Q",colnames(k16))) %>% gather(key=Ancestry, value=Q, 6:21)
+s16<-bind_cols(meta,k16) %>% arrange(`Collection Locality`,Locality, Individual) %>% mutate(Index=1:n()) %>% dplyr::select(Label, Index, Locality, `Collection Locality`, Individual, gsub("V","Q",colnames(k16))) %>% gather(key=Ancestry, value=Q, 6:21)
 
 s16$Ancestry<-factor(s16$Ancestry, levels=gsub("V","Q",colnames(k16)))
 ```
@@ -51,11 +53,15 @@ s1<-ggplot(s16) +
   scale_x_continuous(breaks=labels$Position, labels=labels$`Locality`) +
   theme(axis.text.x = element_text(angle=45, hjust=1)) +
   xlab("") +
-  ylab("Q\n")
+  ylab("Q\n") +
+  theme(axis.title.y=element_text(size=14, face="bold")) +
+  theme(axis.text.y = element_text(size=12)) +
+  ggtitle("K = 16") +
+  theme(plot.title = element_text(size=16, face="bold", hjust=0.5))
 
 s1
-ggsave("outputs/500/supplemental-figure-s1.jpg", width=12, height=8)
-ggsave("outputs/500/supplemental-figure-s1.pdf", width=12, height=8)
+ggsave("outputs/500/supplemental-figure-s1.jpg", width=16, height=8)
+ggsave("outputs/500/supplemental-figure-s1.pdf", width=16, height=8)
 
 ```
 

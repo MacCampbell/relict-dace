@@ -12,6 +12,9 @@ knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
 ```{r}
 library(tidyverse)
 library(ggpubr)
+library(RcppCNPy)
+library(ggpubr)
+library(gridExtra)
 ```
 
 ## Supplemental Figure S2
@@ -85,16 +88,34 @@ plot<-ggplot(rdf) +
   xlim(-0.1, labels$Stop[length(labels$Stop)]+1) +
   scale_x_continuous(breaks=labels$Position, labels=labels$Site) +
   theme(axis.text.x = element_text(angle=45, hjust=1)) +
-  xlab("") 
+  xlab("") +
+  ggtitle(paste0("K = ", qs)) +
+  theme(plot.title = element_text(hjust=0.5, face="bold"))
 
 ggsave(paste0("outputs/600/pcangsd-admix-",qs,".jpg"), width=12, height=8)
 ggsave(paste0("outputs/600/pcangsd-admix-",qs,".pdf"), width=12, height=8)
-
+return(plot)
 }
 ```
 
 ```{r}
 files<-list.files("outputs/600/", pattern="admix.Q.npy", full.names = TRUE)
 plots<-lapply(files, PlotPCAdmix)
+```
+
+Combine, I can use pdfjam.   
+
+```{sh, eval=FALSE}
+pdfjam outputs/600/*admix*.pdf --nup 1x5 --outfile outputs/600/Supplemental\ Figure\ S2.pdf
+```
+
+Hmm, I don't like this. Trying something else.
+
+```{r}
+jpeg(filename = "outputs/600/Supplemental Figure S2.jpeg",width=12, height=16, units = "in", res = 300)
+
+grid.arrange(grobs=plots, ncol=1)
+
+dev.off()
 ```
 

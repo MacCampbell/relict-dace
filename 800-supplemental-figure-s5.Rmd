@@ -1,0 +1,136 @@
+---
+title: "800-supplemental-figure-S5"
+author: "Mac Campbell"
+date: "9/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+```
+
+
+Plots of diversity stats   
+
+### Western Valleys
+
+```{r}
+RD_west = read.table("outputs/300/western_valley.diversity.tsv", header = T, sep = '\t')
+RD_west[,c(3,4)] = RD_west[,c(3,4)]/RD_west$nSites
+RD_west = subset(RD_west, tW < 0.0125 & tP < 0.0125)
+RD_west$Pop<-gsub("RBRL226","P226",RD_west$Pop)
+RD_west$Pop<-gsub("RBRL246","P246",RD_west$Pop)
+
+wt <- ggplot(RD_west, aes(x=Pop, y=tW)) + 
+  stat_boxplot(geom ='errorbar') +
+  geom_boxplot(aes(fill=Pop), notch=FALSE, outlier.size=0.15, outlier.stroke = 0, outlier.alpha=0.5) + 
+  labs(y = "Watterson's Theta\n") + 
+  labs(x="") +
+  theme_bw() +
+  scale_y_continuous(breaks=seq(0.00,0.05,0.0025)) + 
+  ggtitle(label = "A") +
+  theme(plot.title = element_text(face="bold", size=16)) +
+  theme(panel.grid = element_blank()) +
+  theme(legend.position = "") +
+  scale_fill_manual(values=c("#D55E00","#D55E00","#E69F00","#009E73","#0072B2","#0072B2")) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.title.x=element_blank()) 
+  #scale_x_discrete(labels=c("BTOC",BTQP","RBFL","RBFR","P226","P246"))
+
+wt
+```
+
+```{r}
+tdlabels<-RD_west %>% group_by(Pop) %>% mutate(mediantD=median(tD)) %>% select(Pop, mediantD) %>% unique() %>% mutate(y=mediantD+0.15)
+
+td <- ggplot(RD_west, aes(x=Pop, y=tD)) + 
+  stat_boxplot(geom ='errorbar') +
+  geom_boxplot(aes(fill=Pop), notch=FALSE, outlier.size=0.15, outlier.stroke = 0, outlier.alpha=0.5) + 
+  labs(y = "Tajima's D\n") + 
+  labs(x="") +
+  theme_bw() +
+  scale_y_continuous(breaks=seq(-5,5,1)) + 
+  ggtitle(label = "B") +
+  theme(plot.title = element_text(face="bold", size=16)) +
+  theme(panel.grid = element_blank()) +
+  theme(legend.position = "") +
+  scale_fill_manual(values=c("#D55E00","#D55E00","#E69F00","#009E73","#0072B2","#0072B2")) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.title.x=element_blank()) +
+  geom_text(data=tdlabels, aes(x=Pop, y=y, label=round(mediantD,2)))
+  #scale_x_discrete(labels=c("BTOC",BTQP","RBFL","RBFR","P226","P246")) 
+
+td
+```
+
+
+### Eastern Valleys
+
+```{r}
+RD_east = read.table("outputs/400/eastern_valley.diversity.tsv", header = T, sep = '\t')
+RD_east[,c(3,4)] = RD_east[,c(3,4)]/RD_east$nSites
+RD_east = subset(RD_east, tW < 0.020 & tP < 0.020)
+RD_east_means=aggregate(RD_east[,3:5], list(RD_east$Pop), FUN=mean, header=TRUE)
+
+
+wte <- ggplot(RD_east, aes(x=Pop, y=tW)) + 
+  stat_boxplot(geom ='errorbar') +
+  geom_boxplot(aes(fill=Pop), notch=FALSE, outlier.size=0.15, outlier.stroke = 0, outlier.alpha=0.5) + 
+  labs(y = "Watterson's Theta\n") + 
+  labs(x="") +
+  theme_bw() +
+  scale_y_continuous(breaks=seq(0.00,0.05,0.0025)) + 
+  ggtitle(label = "C") +
+  theme(plot.title = element_text(face="bold", size=16)) +
+  theme(panel.grid = element_blank()) +
+  theme(legend.position = "") +
+  #scale_fill_manual(values=c("#D55E00","#D55E00","#E69F00","#009E73","#0072B2","#0072B2")) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size=txt), axis.title.x=element_blank()) 
+#  theme(axis.text.y = element_text(size=txt+4)) +
+ # theme(axis.title = element_text(size = size))
+  #scale_x_discrete(labels=c("BTOC",BTQP","RBFL","RBFR","P226","P246"))
+
+wte
+```
+
+```{r}
+td2labels<-RD_east %>% group_by(Pop) %>% mutate(mediantD=median(tD)) %>% select(Pop, mediantD) %>% unique() %>% mutate(y=mediantD+0.15)
+
+tde <- ggplot(RD_east, aes(x=Pop, y=tD)) + 
+  stat_boxplot(geom ='errorbar') +
+  geom_boxplot(aes(fill=Pop), notch=FALSE, outlier.size=0.15, outlier.stroke = 0, outlier.alpha=0.5) + 
+  labs(y = "Tajima's D\n") + 
+  labs(x="") +
+  theme_bw() +
+  scale_y_continuous(breaks=seq(-5,5,1)) + 
+  ggtitle(label = "D") +
+  theme(plot.title = element_text(face="bold", size=16)) +
+  theme(panel.grid = element_blank()) +
+  theme(legend.position = "") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size=txt), axis.title.x=element_blank()) +
+ # theme(axis.text.y = element_text(size=txt+4)) +
+#  theme(axis.title = element_text(size = size)) +
+  geom_text(data=td2labels, aes(x=Pop, y=y, label=round(mediantD,2)))
+
+tde
+```
+
+### All Together
+
+```{r}
+rectangle <- grid.rect(gp=gpar(col="white"))
+```
+
+```{r}
+ggarrange(arrangeGrob(wt, td), arrangeGrob(rectangle, rectangle), arrangeGrob(wte, tde), ncol=3, widths=c(1,.1,3)) 
+
+ggsave("outputs/800/supplemental-figure-s5.pdf", width=14, height=9)
+ggsave("outputs/800/supplemental-figure-s5.jpeg", width=14, height=9)
+
+```
+
+
+
