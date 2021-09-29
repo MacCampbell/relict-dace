@@ -12,8 +12,9 @@ _400_ series has analysis and plotting of Figure 4 and Supplemental Figure S4
 _500_ Supplemental Figure S1       
 _600_ Supplemental Figure S2       
 _700_ Supplemental Figure S3       
-_800_ Supplemental Figure S5
-/outputs/ - outputs is in .gitignore      
+_800_ Supplemental Figure S5      
+
+/outputs/ - outputs is in .gitignore       
 
 
 
