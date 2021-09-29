@@ -14,6 +14,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
 library(tidyverse)
 library(ggtree)
 library(ape)
+library(ggrepel)
 ```
 
 ## Coalescent Tree
@@ -236,10 +237,31 @@ keepers$`Geographic Region`<-factor(keepers$`Geographic Region`, levels=c("Easte
 
 
 ```{r}
-t2b<-ggtree(t4, branch.length = "none") %<+% keepers
+t2b<-ggtree(t4, branch.length = 1, layout = "daylight") %<+% keepers
 t2b$data$label<-gsub("RD6","",t2b$data$label)
+```
 
-fig2b <- t2b+
+```{r}
+fig2b <- t2b +
+  geom_tippoint(aes(size=`Sample Size`, fill=`Geographic Region`), pch=21, alpha=1.00) +
+  geom_text_repel(data=filter(t2b$dat, isTip==TRUE), aes(label=label, x=x, y=y), alpha=0.75, size=3, 
+                   segment.color = NA) +
+  #geom_tiplab2(aes(label=label, angle=angle), size=2) +
+  scale_fill_manual(values=c("blue","red","green")) +
+  theme(legend.position = "") +
+  ggtitle("C") +
+  theme(plot.title = element_text(size=16, face="bold", hjust=0)) +
+  theme(plot.margin = margin(0.2,0.0,0,1, "cm")) +
+  geom_nodelab(fontface="bold", size=3) 
+#  xlim(-10,NA)
+  
+fig2b
+
+
+```
+ Rectangular
+```{r}
+ fig2b<-ggtree(t4, branch.length = "none") %<+% keepers +
   geom_tippoint(aes(size=`Sample Size`, x=x+0.2, fill=`Geographic Region`), pch=21, alpha=0.85) +
   geom_tiplab(size=3, offset = 0.5) + 
   geom_nodelab(fontface="bold", size=3)+xlim(0,12) +
@@ -249,12 +271,13 @@ fig2b <- t2b+
   theme(plot.title = element_text(size=16, face="bold", hjust=0)) +
   theme(plot.margin = margin(0.2,0.0,0,1, "cm"))
 
-fig2b
-
 ggsave("outputs/201/fig2b.pdf", width=8, height=5)
 save(fig2b,file="outputs/201/fig2b.rda")
 
 ```
+
+
+
 
 
 
