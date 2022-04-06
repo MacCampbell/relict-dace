@@ -317,7 +317,8 @@ ggsave("outputs/100/RD_all-pcs.pdf", width=9, height=9)
 ## Prepating a Reduced Bamlist
 
 ```{r}
-meta %>% filter(Individual %in% dropped) %>% select(Label, Individual)
+meta %>% filter(Individual %in% dropped) %>% select(Label, Locality, Individual) %>% group_by(Locality) %>% summarize(Count=n()) %>%
+  mutate(Sum=sum(Count))
 ```
 
 ```{r}

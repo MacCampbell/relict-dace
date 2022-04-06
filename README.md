@@ -1,5 +1,5 @@
 # relict-dace
-Population genetic analyses of relict dace     
+Population genetic analyses of relict dace in https://conbio.onlinelibrary.wiley.com/doi/10.1111/csp2.12672     
 
 ## Organization 
 
